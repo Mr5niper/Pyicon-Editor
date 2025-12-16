@@ -60,7 +60,6 @@ class CanvasEditor(ttk.Frame):
         self.history = UndoRedoStack(limit=50)
 
         self._build_ui()
-        self.new_blank((256, 256))
 
     # Layers API
     def _push_state(self):
