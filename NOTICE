@@ -1,0 +1,14 @@
+Icon Creator & Editor
+Copyright (c) 2025 You
+
+This project’s original source code (under icon_editor/) is licensed under the MIT License (see LICENSE).
+
+Third-party components:
+- Python (and tkinter)
+  License: Python Software Foundation License (PSF)
+  Notes: tkinter uses the Tk GUI toolkit (Tcl/Tk, BSD-style license).
+- Pillow (PIL fork)
+  License: Historical Permission Notice and Disclaimer (HPND)
+  Notes: Compatible with MIT; see Pillow’s repository for full text.
+
+You must comply with the terms of the above third-party licenses when distributing binaries or source derived from this project.
