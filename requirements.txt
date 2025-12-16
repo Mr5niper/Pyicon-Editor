@@ -1,0 +1,4 @@
+# Runtime dependencies for Icon Creator & Editor
+tkinter
+Pillow>=9.1,<11
+pyinstaller>=6.0
