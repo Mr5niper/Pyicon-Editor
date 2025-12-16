@@ -37,11 +37,19 @@ class MainWindow(tk.Tk):
         self.maintain_aspect = tk.BooleanVar(value=True)
         self.show_grid = tk.BooleanVar(value=False)
 
+        # If zoom updates arrive before the statusbar is built, remember them here
+        self._pending_zoom = None
+
+        # Menu first
         self._build_menu()
-        self._build_layout()
+        # Build status bar BEFORE layout so zoom_label exists for early callbacks
         self._build_statusbar()
+        # Then build the rest of the UI
+        self._build_layout()
+
         self._update_status("Ready")
 
+        # Keyboard shortcuts
         self.bind_all("<Control-o>", lambda e: self.open_image())
         self.bind_all("<Control-s>", lambda e: self.save_png())
         self.bind_all("<Control-e>", lambda e: self.export_ico())
@@ -166,12 +174,13 @@ class MainWindow(tk.Tk):
         self.main_frame.columnconfigure(1, weight=0)
         self.main_frame.rowconfigure(0, weight=1)
 
+        # Defer zoom updates to the event loop to avoid firing during construction
         self.canvas_editor = CanvasEditor(
             self.main_frame,
             on_status=self._update_status,
             on_cursor=self._update_cursor,
             on_size_change=self._update_image_info,
-            on_zoom_change=self._update_zoom_info,
+            on_zoom_change=lambda z: self.after_idle(lambda: self._update_zoom_info(z)),
             on_layers_changed=self._refresh_layers_panel
         )
         self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
@@ -256,14 +265,25 @@ class MainWindow(tk.Tk):
         self.statusbar = ttk.Frame(self)
         self.statusbar.grid(row=3, column=0, sticky="ew")
         self.statusbar.columnconfigure(0, weight=1)
+
         self.status_label = ttk.Label(self.statusbar, text="Status: Ready", anchor="w")
         self.status_label.grid(row=0, column=0, sticky="ew", padx=8)
+
         self.cursor_label = ttk.Label(self.statusbar, text="Cursor: -, -", width=20, anchor="e")
         self.cursor_label.grid(row=0, column=1, sticky="e", padx=8)
+
         self.dim_label = ttk.Label(self.statusbar, text="Canvas: 0x0", width=16, anchor="e")
         self.dim_label.grid(row=0, column=2, sticky="e", padx=8)
+
         self.zoom_label = ttk.Label(self.statusbar, text="Zoom: 4x", width=12, anchor="e")
         self.zoom_label.grid(row=0, column=3, sticky="e", padx=8)
+
+        # Apply any pending zoom text that may have arrived early
+        if self._pending_zoom is not None:
+            try:
+                self.zoom_label.config(text=f"Zoom: {self._pending_zoom}x")
+            finally:
+                self._pending_zoom = None
 
     def _update_status(self, text):
         self.status_label.config(text=f"Status: {text}")
@@ -286,7 +306,11 @@ class MainWindow(tk.Tk):
             self.info_label.config(text="No image loaded")
 
     def _update_zoom_info(self, zoom):
-        self.zoom_label.config(text=f"Zoom: {zoom}x")
+        # Guard for early callbacks
+        if hasattr(self, "zoom_label"):
+            self.zoom_label.config(text=f"Zoom: {zoom}x")
+        else:
+            self._pending_zoom = zoom
 
     def _on_tool_change(self, tool: ToolType):
         self.canvas_editor.set_tool(tool)
