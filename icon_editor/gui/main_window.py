@@ -13,6 +13,7 @@ from core.image_handler import (
 from core.icon_generator import export_ico_dialog
 from core.editor_tools import ToolType
 from gui.canvas_editor import CanvasEditor
+    # adjust import path as appropriate
 from gui.toolbar import ToolBar
 from utils.helpers import human_readable_size
 from utils.config import AppConfig
@@ -32,24 +33,22 @@ class MainWindow(tk.Tk):
         self.style = ttk.Style()
         self._apply_theme(self.theme)
 
-        self.current_file = None  # type: Path | None
+        self.current_file: Path | None = None
 
         self.maintain_aspect = tk.BooleanVar(value=True)
         self.show_grid = tk.BooleanVar(value=False)
 
-        # If zoom updates arrive before the statusbar is built, remember them here
+        # If zoom update arrives before statusbar is built
         self._pending_zoom = None
 
-        # Menu first
+        # 1) Menu, 2) Statusbar (so labels exist), 3) Layout (CanvasEditor)
         self._build_menu()
-        # Build status bar BEFORE layout so zoom_label exists for early callbacks
         self._build_statusbar()
-        # Then build the rest of the UI
         self._build_layout()
 
         self._update_status("Ready")
 
-        # Keyboard shortcuts
+        # Shortcuts
         self.bind_all("<Control-o>", lambda e: self.open_image())
         self.bind_all("<Control-s>", lambda e: self.save_png())
         self.bind_all("<Control-e>", lambda e: self.export_ico())
@@ -174,20 +173,22 @@ class MainWindow(tk.Tk):
         self.main_frame.columnconfigure(1, weight=0)
         self.main_frame.rowconfigure(0, weight=1)
 
-        # Defer zoom updates to the event loop to avoid firing during construction
+        # Build side panel first (so its widgets exist)
+        self.side_panel = ttk.Frame(self.main_frame)
+        self.side_panel.grid(row=0, column=1, sticky="ns", padx=(5, 10), pady=10)
+        self._build_side_panel(self.side_panel)
+
+        # Now create CanvasEditor.
+        # Defer callbacks with after_idle to avoid firing during construction
         self.canvas_editor = CanvasEditor(
             self.main_frame,
             on_status=self._update_status,
             on_cursor=self._update_cursor,
-            on_size_change=self._update_image_info,
+            on_size_change=lambda w, h: self.after_idle(lambda: self._update_image_info(w, h)),
             on_zoom_change=lambda z: self.after_idle(lambda: self._update_zoom_info(z)),
-            on_layers_changed=self._refresh_layers_panel
+            on_layers_changed=lambda: self.after_idle(self._refresh_layers_panel)
         )
         self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
-
-        self.side_panel = ttk.Frame(self.main_frame)
-        self.side_panel.grid(row=0, column=1, sticky="ns", padx=(5, 10), pady=10)
-        self._build_side_panel(self.side_panel)
 
         # Deselect shortcut
         self.bind_all("<Escape>", lambda e: self._deselect())
@@ -265,25 +266,18 @@ class MainWindow(tk.Tk):
         self.statusbar = ttk.Frame(self)
         self.statusbar.grid(row=3, column=0, sticky="ew")
         self.statusbar.columnconfigure(0, weight=1)
-
         self.status_label = ttk.Label(self.statusbar, text="Status: Ready", anchor="w")
         self.status_label.grid(row=0, column=0, sticky="ew", padx=8)
-
         self.cursor_label = ttk.Label(self.statusbar, text="Cursor: -, -", width=20, anchor="e")
         self.cursor_label.grid(row=0, column=1, sticky="e", padx=8)
-
         self.dim_label = ttk.Label(self.statusbar, text="Canvas: 0x0", width=16, anchor="e")
         self.dim_label.grid(row=0, column=2, sticky="e", padx=8)
-
         self.zoom_label = ttk.Label(self.statusbar, text="Zoom: 4x", width=12, anchor="e")
         self.zoom_label.grid(row=0, column=3, sticky="e", padx=8)
-
-        # Apply any pending zoom text that may have arrived early
+        # Apply pending zoom if any
         if self._pending_zoom is not None:
-            try:
-                self.zoom_label.config(text=f"Zoom: {self._pending_zoom}x")
-            finally:
-                self._pending_zoom = None
+            self.zoom_label.config(text=f"Zoom: {self._pending_zoom}x")
+            self._pending_zoom = None
 
     def _update_status(self, text):
         self.status_label.config(text=f"Status: {text}")
@@ -295,18 +289,23 @@ class MainWindow(tk.Tk):
             self.cursor_label.config(text=f"Cursor: {x}, {y}")
 
     def _update_image_info(self, w, h):
+        # This can be called before self.canvas_editor is assigned (during construction).
         self.dim_label.config(text=f"Canvas: {w}x{h}")
-        comp = self.canvas_editor.get_composite()
+        comp = None
+        try:
+            if hasattr(self, "canvas_editor") and self.canvas_editor is not None:
+                comp = self.canvas_editor.get_composite()
+        except Exception:
+            comp = None
         if comp is not None:
             sz = comp.width * comp.height * 4
             self.info_label.config(
                 text=f"Size: {w} x {h}\nMode: RGBA\nApprox Mem: {human_readable_size(sz)}"
             )
         else:
-            self.info_label.config(text="No image loaded")
+            self.info_label.config(text=f"Size: {w} x {h}\nMode: RGBA")
 
     def _update_zoom_info(self, zoom):
-        # Guard for early callbacks
         if hasattr(self, "zoom_label"):
             self.zoom_label.config(text=f"Zoom: {zoom}x")
         else:
@@ -465,6 +464,9 @@ class MainWindow(tk.Tk):
 
     # Layers UI interaction
     def _refresh_layers_panel(self):
+        # Guard in case called before side panel is built
+        if not hasattr(self, "layers_list"):
+            return
         self.layers_list.delete(0, "end")
         for idx, (name, vis) in enumerate(self.canvas_editor.get_layer_list()):
             mark = "👁" if vis else "☐"
@@ -474,23 +476,6 @@ class MainWindow(tk.Tk):
             self.layers_list.select_clear(0, "end")
             self.layers_list.select_set(active)
             self.layers_list.activate(active)
-
-    def _on_layer_select(self, event):
-        sel = self.layers_list.curselection()
-        if sel:
-            self.canvas_editor.set_active_layer(int(sel[0]))
-
-    def _layer_add(self):
-        self.canvas_editor.layer_add()
-
-    def _layer_delete(self):
-        self.canvas_editor.layer_delete()
-
-    def _layer_move(self, direction):
-        self.canvas_editor.layer_move(direction)
-
-    def _layer_toggle_vis(self):
-        self.canvas_editor.layer_toggle_visibility()
 
 
 def run_app():
