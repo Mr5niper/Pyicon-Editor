@@ -68,9 +68,27 @@ A full-featured, cross-platform icon creator and editor written in Python. Creat
 
 1) Ensure Python 3.8+ is installed.
 
-2) Install dependencies:
+2) Create and activate a virtual environment, then upgrade packaging tools and install dependencies.
+
+Windows (PowerShell):
 ```
-pip install Pillow
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+```
+
+macOS/Linux (bash/zsh):
+```
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+```
+
+If you don’t have requirements.txt, this project currently needs:
+```
+python -m pip install Pillow
 ```
 
 On Linux, if tkinter is not available, install it via your package manager (examples):
@@ -91,6 +109,7 @@ No additional GUI toolkit is required beyond tkinter.
 ```
 icon_editor/
   main.py                  # Application entry / CLI
+  __main__.py              # Enables `python -m icon_editor`
   gui/
     __init__.py
     main_window.py         # Main window, menus, side panel, status bar
@@ -111,6 +130,8 @@ icon_editor/
 LICENSE
 NOTICE
 README.md
+requirements.txt
+icon_editor.spec          # PyInstaller spec (see Build section)
 ```
 
 ---
@@ -121,6 +142,10 @@ GUI mode:
 ```
 python icon_editor/main.py
 ```
+or, with package entry:
+```
+python -m icon_editor
+```
 
 The first run creates a config file:
 - Windows/macOS/Linux: ~/.icon_editor_config.json
@@ -130,7 +155,7 @@ The first run creates a config file:
 ## Usage (GUI)
 
 - File > New: create a blank canvas (default 256x256)
-- File > Open: load an image (PNG/JPG/GIF/TIFF/WebP/ICO). Large images are auto-downscaled for smoother editing (configurable in CLI; GUI defaults to 3072 px max dimension for loading).
+- File > Open: load an image (PNG/JPG/GIF/TIFF/WebP/ICO). Large images are auto-downscaled for smoother editing (default 3072 px max dimension; configurable for CLI).
 - Tools:
   - Brush/Eraser: click-drag to draw; adjust Size and Alpha in toolbar
   - Fill/Magic Eraser: click to fill; adjust Fill tolerance
@@ -220,6 +245,112 @@ Options:
 
 ---
 
+## Build a Single-File EXE with PyInstaller (spec-based)
+
+1) Activate your venv and ensure latest build tools:
+```
+# (venv active)
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+python -m pip install pyinstaller
+```
+
+2) Add the spec file (icon_editor.spec) at the repository root (copy this exactly, then edit the icon path if you have one):
+```
+# icon_editor.spec
+# Build with: pyinstaller --clean --noconfirm icon_editor.spec
+# Produces a single-file executable in ./dist (IconCreator[.exe] on Windows)
+
+import sys
+from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules
+
+project_root = Path(__file__).parent.resolve()
+
+# Optional: include a custom app icon (uncomment and set a valid .ico path on Windows)
+app_icon = None  # str(project_root / "assets" / "app.ico")
+
+block_cipher = None
+
+hidden = collect_submodules('PIL')  # ensure Pillow submodules are bundled
+
+a = Analysis(
+    ['icon_editor/main.py'],
+    pathex=[str(project_root)],
+    binaries=[],
+    datas=[
+        ('LICENSE', '.'),            # optional: ship license
+        ('NOTICE', '.'),             # optional: ship notice
+        # ('icon_editor/assets', 'icon_editor/assets'),  # optional: bundle assets/fonts if you add them
+    ],
+    hiddenimports=hidden,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='IconCreator',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,          # set True if you prefer a console window
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=app_icon
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='IconCreator'
+)
+```
+
+3) Build (clean, onefile):
+```
+pyinstaller --clean --noconfirm icon_editor.spec
+```
+
+- Output:
+  - Windows: dist/IconCreator/IconCreator.exe
+  - macOS/Linux: dist/IconCreator/IconCreator
+- One-file bundle: yes (single executable).
+- Clean build: --clean removes cached files before building; --noconfirm overwrites previous output.
+
+4) Run the built app:
+```
+# Windows
+dist\IconCreator\IconCreator.exe
+
+# macOS/Linux
+./dist/IconCreator/IconCreator
+```
+
+Notes:
+- If you add an app icon (Windows), place your .ico at assets/app.ico and set app_icon in the spec file.
+- If you add fonts or other assets, include them via the datas list in icon_editor.spec (see commented line).
+- For macOS “unverified developer” warnings, you may need to codesign or run via right-click > Open. Packaging as a .app bundle is possible (spec adjustment), but out of scope here.
+
+---
+
 ## Performance & Safety
 
 - Large images: Automatic downscale on open for editing responsiveness (GUI load path uses 3072 px cap; changeable in CLI).
@@ -230,7 +361,7 @@ Options:
 
 ## Known Limitations
 
-- Text tool font: uses DejaVuSans.ttf when available, otherwise falls back to PIL’s default bitmap font. Install additional fonts or modify code to pick a custom font path.
+- Text tool font: uses DejaVuSans.ttf when available, otherwise falls back to PIL’s default bitmap font. To ship a custom font, add it to an assets folder and include it in the spec datas list, then update the code to load that path.
 - No advanced transforms (rotate/scale arbitrary) for selections beyond move; future enhancement.
 - Floating selection must be committed (switch tool or Esc) before export to ensure it is baked into layers.
 
@@ -241,30 +372,36 @@ Options:
 - “Module tkinter not found” on Linux:
   - Install tk: e.g., Debian/Ubuntu: `sudo apt-get install python3-tk`
 - Pillow errors opening some images:
-  - Update Pillow: `pip install --upgrade Pillow`
+  - Update Pillow: `python -m pip install --upgrade Pillow`
   - Convert image to PNG first if it’s an uncommon format variant.
 - ICO not showing all sizes:
   - Ensure sizes are selected and check the exported file with a viewer that supports multi-size ICO.
+- PyInstaller build issues:
+  - Ensure you’re building from an activated venv
+  - Clean old builds: delete ./build and ./dist or use `pyinstaller --clean`
+  - Try enabling console=True in the spec to view runtime logs
 
 ---
 
 ## Development
 
 Recommended environment:
-
 ```
 python -m venv .venv
 # Windows:
-.venv\Scripts\activate
+.venv\Scripts\Activate.ps1
 # macOS/Linux:
 source .venv/bin/activate
 
-pip install Pillow
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
 ```
 
 Run:
 ```
 python icon_editor/main.py
+# or
+python -m icon_editor
 ```
 
 Code style:
@@ -300,3 +437,17 @@ Copyright (c) 2025
 
 - Built with Python, tkinter, and Pillow
 - Thanks to contributors and testers
+```
+
+Optional: add requirements.txt at the repo root (referenced by the README):
+```
+Pillow>=9.1
+```
+
+And add this at icon_editor/__main__.py so users can run `python -m icon_editor`:
+```
+from .main import main
+
+if __name__ == "__main__":
+    main()
+```
