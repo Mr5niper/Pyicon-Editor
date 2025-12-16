@@ -155,7 +155,8 @@ class MainWindow(tk.Tk):
     def _build_layout(self):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
-
+        
+        # Toolbar
         self.toolbar = ToolBar(
             self,
             on_tool_change=self._on_tool_change,
@@ -166,33 +167,30 @@ class MainWindow(tk.Tk):
         )
         self.toolbar.grid(row=0, column=0, sticky="ew")
         ttk.Separator(self, orient="horizontal").grid(row=1, column=0, sticky="ew")
-
+        
+        # Main area frame
         self.main_frame = ttk.Frame(self)
         self.main_frame.grid(row=2, column=0, sticky="nsew")
         self.main_frame.columnconfigure(0, weight=1)
         self.main_frame.columnconfigure(1, weight=0)
         self.main_frame.rowconfigure(0, weight=1)
-
-        # Build side panel first (so its widgets exist)
-        self.side_panel = ttk.Frame(self.main_frame)
-        self.side_panel.grid(row=0, column=1, sticky="ns", padx=(5, 10), pady=10)
-        self._build_side_panel(self.side_panel)
-
-        # Now create CanvasEditor.
-        # Defer callbacks with after_idle to avoid firing during construction
+        
+        # Canvas editor (CREATE THIS FIRST!)
         self.canvas_editor = CanvasEditor(
             self.main_frame,
             on_status=self._update_status,
             on_cursor=self._update_cursor,
-            on_size_change=lambda w, h: self.after_idle(lambda: self._update_image_info(w, h)),
-            on_zoom_change=lambda z: self.after_idle(lambda: self._update_zoom_info(z)),
-            on_layers_changed=lambda: self.after_idle(self._refresh_layers_panel)
+            on_size_change=self._update_image_info,
+            on_zoom_change=self._update_zoom_info,
+            on_layers_changed=self._refresh_layers_panel
         )
         self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
-
-        # Deselect shortcut
-        self.bind_all("<Escape>", lambda e: self._deselect())
-
+        
+        # Side panel (references canvas_editor, so must come AFTER)
+        self.side_panel = ttk.Frame(self.main_frame)
+        self.side_panel.grid(row=0, column=1, sticky="ns", padx=(5, 10), pady=10)
+        self._build_side_panel(self.side_panel)
+        
     def _build_side_panel(self, parent):
         info_group = ttk.LabelFrame(parent, text="Image Info")
         info_group.pack(fill="x", pady=(0, 10))
