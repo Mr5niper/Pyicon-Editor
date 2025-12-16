@@ -168,14 +168,14 @@ class MainWindow(tk.Tk):
         self.toolbar.grid(row=0, column=0, sticky="ew")
         ttk.Separator(self, orient="horizontal").grid(row=1, column=0, sticky="ew")
         
-        # Main area frame
+        # Main area
         self.main_frame = ttk.Frame(self)
         self.main_frame.grid(row=2, column=0, sticky="nsew")
         self.main_frame.columnconfigure(0, weight=1)
         self.main_frame.columnconfigure(1, weight=0)
         self.main_frame.rowconfigure(0, weight=1)
         
-        # Canvas editor (CREATE THIS FIRST!)
+        # Canvas editor (don't initialize canvas yet)
         self.canvas_editor = CanvasEditor(
             self.main_frame,
             on_status=self._update_status,
@@ -186,10 +186,13 @@ class MainWindow(tk.Tk):
         )
         self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
         
-        # Side panel (references canvas_editor, so must come AFTER)
+        # Side panel (must be created before calling new_blank)
         self.side_panel = ttk.Frame(self.main_frame)
         self.side_panel.grid(row=0, column=1, sticky="ns", padx=(5, 10), pady=10)
         self._build_side_panel(self.side_panel)
+        
+        # NOW initialize the canvas after all UI widgets exist
+        self.canvas_editor.new_blank((256, 256))
         
     def _build_side_panel(self, parent):
         info_group = ttk.LabelFrame(parent, text="Image Info")
