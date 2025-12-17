@@ -7,7 +7,16 @@ from utils.helpers import clamp
 
 
 class CanvasEditor(ttk.Frame):
-    def __init__(self, parent, on_status=None, on_cursor=None, on_size_change=None, on_zoom_change=None, on_layers_changed=None):
+    def __init__(
+        self,
+        parent,
+        on_status=None,
+        on_cursor=None,
+        on_size_change=None,
+        on_zoom_change=None,
+        on_layers_changed=None,
+        on_color_ui=None,  # NEW: callback to sync UI color (e.g., eyedropper)
+    ):
         super().__init__(parent)
         self.parent = parent
         self.on_status = on_status or (lambda text: None)
@@ -15,14 +24,15 @@ class CanvasEditor(ttk.Frame):
         self.on_size_change = on_size_change or (lambda w, h: None)
         self.on_zoom_change = on_zoom_change or (lambda z: None)
         self.on_layers_changed = on_layers_changed or (lambda: None)
+        self.on_color_ui = on_color_ui or (lambda rgba: None)
 
-        # Layers: created by new_blank/load_image (do not create here)
-        self.layers = []              # list[Image.Image]
-        self.layer_visible = []       # list[bool]
-        self.layer_names = []         # list[str]
+        # Layers are created by new_blank/load_image
+        self.layers: list[Image.Image] = []
+        self.layer_visible: list[bool] = []
+        self.layer_names: list[str] = []
         self.active_layer = 0
 
-        self._composite_cache = None
+        self._composite_cache: Image.Image | None = None
         self._composite_dirty = True
 
         self._display_image = None
@@ -32,35 +42,39 @@ class CanvasEditor(ttk.Frame):
         self._space_pan_active = False
 
         self.tool = ToolType.PENCIL
-        self.brush_size = 1
+        self.brush_size = 5
         self.color = (0, 0, 0, 255)
         self.alpha = 255
         self.fill_tolerance = 0
 
+        # Selection / move
         self.sel_active = False
         self.sel_start = None
         self.sel_rect = None
         self.sel_floating = None
         self.sel_offset = (0, 0)
 
+        # Gestures
         self.is_drawing = False
         self.last_pos = None
 
+        # Shapes
         self.shape_start = None
         self.preview_image = None
 
         self.history = UndoRedoStack(limit=50)
 
         self._build_ui()
-        # Do NOT call new_blank here; main_window will initialize after widget assignment
+        # NOTE: Do not call new_blank here; main_window triggers it after widget exists.
 
-    # ---------- Layers / Composite ----------
+    # ---------- Size helpers ----------
     def width(self):
         return self.layers[0].width if self.layers else 0
 
     def height(self):
         return self.layers[0].height if self.layers else 0
 
+    # ---------- Composite ----------
     def _mark_dirty(self):
         self._composite_dirty = True
 
@@ -87,6 +101,7 @@ class CanvasEditor(ttk.Frame):
             comp.alpha_composite(self.preview_image)
         return comp
 
+    # ---------- Layer controls ----------
     def active_layer_index(self):
         return self.active_layer
 
@@ -146,7 +161,7 @@ class CanvasEditor(ttk.Frame):
         self._refresh_display()
         self.on_layers_changed()
 
-    # ---------- UI setup ----------
+    # ---------- UI ----------
     def _build_ui(self):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
@@ -188,7 +203,7 @@ class CanvasEditor(ttk.Frame):
             self.fit_to_window()
             self._first_fit_done = True
 
-    # ---------- Project lifecycle ----------
+    # ---------- Lifecycle ----------
     def new_blank(self, size):
         w, h = size
         self.layers = [Image.new("RGBA", (w, h), (0, 0, 0, 0))]
@@ -227,7 +242,7 @@ class CanvasEditor(ttk.Frame):
         self.sel_offset = (0, 0)
         self.preview_image = None
 
-    # ---------- View controls ----------
+    # ---------- View ----------
     def set_zoom(self, zoom: int):
         zoom = clamp(zoom, 1, 16)
         if self.zoom != zoom:
@@ -275,7 +290,6 @@ class CanvasEditor(ttk.Frame):
 
     # ---------- Tool settings ----------
     def set_tool(self, tool: ToolType):
-        # Commit floating selection if leaving MOVE
         if self.tool == ToolType.MOVE and self.sel_floating is not None and tool != ToolType.MOVE:
             self._commit_floating_selection()
         self.tool = tool
@@ -292,12 +306,17 @@ class CanvasEditor(ttk.Frame):
         self.set_color((r, g, b, self.alpha))
 
     def set_color(self, rgba):
+        # Always clamp and propagate to UI (for color swatch sync)
         self.color = (
             clamp(int(rgba[0]), 0, 255),
             clamp(int(rgba[1]), 0, 255),
             clamp(int(rgba[2]), 0, 255),
             clamp(int(rgba[3]), 0, 255),
         )
+        try:
+            self.on_color_ui(self.color)
+        except Exception:
+            pass
         self.on_status(f"Color: RGBA{self.color}")
 
     def set_fill_tolerance(self, tol: int):
@@ -372,7 +391,7 @@ class CanvasEditor(ttk.Frame):
         self._refresh_display()
         self.on_status("Selection cleared")
 
-    # ---------- Events / Input ----------
+    # ---------- Events ----------
     def _on_space_down(self, event):
         self._space_pan_active = True
         self.canvas.config(cursor="fleur")
@@ -431,6 +450,7 @@ class CanvasEditor(ttk.Frame):
             if comp:
                 try:
                     r, g, b, a = comp.getpixel((ix, iy))
+                    # Use set_color so UI callback runs
                     self.set_color((r, g, b, a))
                 except Exception:
                     pass
@@ -640,7 +660,7 @@ class CanvasEditor(ttk.Frame):
             self._restore_state(snap)
             self.on_status("Redo")
 
-    # ---------- BG transparent ----------
+    # ---------- BG transparency ----------
     def make_background_transparent(self):
         if not self.layers:
             return
@@ -662,24 +682,19 @@ class CanvasEditor(ttk.Frame):
     def _compose_display_image(self):
         if not self.layers:
             return None
-
         comp = self._get_composite_with_preview()
         if comp is None:
             return None
-
         if self.sel_active and self.sel_rect:
             x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
             overlay = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
             d = ImageDraw.Draw(overlay)
             d.rectangle([x0, y0, x1, y1], outline=(0, 200, 255, 255), width=1)
             comp.alpha_composite(overlay)
-
         bg = create_checkerboard((comp.width, comp.height), square_size=8)
         composed = Image.alpha_composite(bg.convert("RGBA"), comp)
-
         if self.zoom != 1:
             composed = composed.resize((comp.width * self.zoom, comp.height * self.zoom), Image.NEAREST)
-
         if self.show_grid and self.zoom >= 4:
             draw = ImageDraw.Draw(composed)
             w, h = composed.size
