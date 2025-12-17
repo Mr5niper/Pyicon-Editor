@@ -1,5 +1,4 @@
 import os
-import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from pathlib import Path
@@ -13,7 +12,6 @@ from core.image_handler import (
 from core.icon_generator import export_ico_dialog
 from core.editor_tools import ToolType
 from gui.canvas_editor import CanvasEditor
-    # adjust import path as appropriate
 from gui.toolbar import ToolBar
 from utils.helpers import human_readable_size
 from utils.config import AppConfig
@@ -38,17 +36,20 @@ class MainWindow(tk.Tk):
         self.maintain_aspect = tk.BooleanVar(value=True)
         self.show_grid = tk.BooleanVar(value=False)
 
-        # If zoom update arrives before statusbar is built
+        # Pending zoom text if early callback arrives
         self._pending_zoom = None
 
-        # 1) Menu, 2) Statusbar (so labels exist), 3) Layout (CanvasEditor)
+        # Build order: menu -> statusbar -> layout (editor)
         self._build_menu()
         self._build_statusbar()
         self._build_layout()
 
+        # Initialize blank canvas AFTER editor exists to avoid early callbacks
+        self.after_idle(lambda: self.canvas_editor.new_blank((256, 256)))
+
         self._update_status("Ready")
 
-        # Shortcuts
+        # Key bindings
         self.bind_all("<Control-o>", lambda e: self.open_image())
         self.bind_all("<Control-s>", lambda e: self.save_png())
         self.bind_all("<Control-e>", lambda e: self.export_ico())
@@ -155,8 +156,7 @@ class MainWindow(tk.Tk):
     def _build_layout(self):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
-        
-        # Toolbar
+
         self.toolbar = ToolBar(
             self,
             on_tool_change=self._on_tool_change,
@@ -167,33 +167,31 @@ class MainWindow(tk.Tk):
         )
         self.toolbar.grid(row=0, column=0, sticky="ew")
         ttk.Separator(self, orient="horizontal").grid(row=1, column=0, sticky="ew")
-        
-        # Main area
+
         self.main_frame = ttk.Frame(self)
         self.main_frame.grid(row=2, column=0, sticky="nsew")
         self.main_frame.columnconfigure(0, weight=1)
         self.main_frame.columnconfigure(1, weight=0)
         self.main_frame.rowconfigure(0, weight=1)
-        
-        # Canvas editor (don't initialize canvas yet)
-        self.canvas_editor = CanvasEditor(
-            self.main_frame,
-            on_status=self._update_status,
-            on_cursor=self._update_cursor,
-            on_size_change=self._update_image_info,
-            on_zoom_change=self._update_zoom_info,
-            on_layers_changed=self._refresh_layers_panel
-        )
-        self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
-        
-        # Side panel (must be created before calling new_blank)
+
+        # Side panel first (safe to reference self.canvas_editor in callbacks later)
         self.side_panel = ttk.Frame(self.main_frame)
         self.side_panel.grid(row=0, column=1, sticky="ns", padx=(5, 10), pady=10)
         self._build_side_panel(self.side_panel)
-        
-        # NOW initialize the canvas after all UI widgets exist
-        self.canvas_editor.new_blank((256, 256))
-        
+
+        # Canvas editor – defer callbacks to event loop
+        self.canvas_editor = CanvasEditor(
+            self.main_frame,
+            on_status=lambda msg: self.after_idle(lambda: self._update_status(msg)),
+            on_cursor=lambda x, y: self.after_idle(lambda: self._update_cursor(x, y)),
+            on_size_change=lambda w, h: self.after_idle(lambda: self._update_image_info(w, h)),
+            on_zoom_change=lambda z: self.after_idle(lambda: self._update_zoom_info(z)),
+            on_layers_changed=lambda: self.after_idle(self._refresh_layers_panel)
+        )
+        self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
+
+        self.bind_all("<Escape>", lambda e: self._deselect())
+
     def _build_side_panel(self, parent):
         info_group = ttk.LabelFrame(parent, text="Image Info")
         info_group.pack(fill="x", pady=(0, 10))
@@ -275,7 +273,6 @@ class MainWindow(tk.Tk):
         self.dim_label.grid(row=0, column=2, sticky="e", padx=8)
         self.zoom_label = ttk.Label(self.statusbar, text="Zoom: 4x", width=12, anchor="e")
         self.zoom_label.grid(row=0, column=3, sticky="e", padx=8)
-        # Apply pending zoom if any
         if self._pending_zoom is not None:
             self.zoom_label.config(text=f"Zoom: {self._pending_zoom}x")
             self._pending_zoom = None
@@ -290,7 +287,6 @@ class MainWindow(tk.Tk):
             self.cursor_label.config(text=f"Cursor: {x}, {y}")
 
     def _update_image_info(self, w, h):
-        # This can be called before self.canvas_editor is assigned (during construction).
         self.dim_label.config(text=f"Canvas: {w}x{h}")
         comp = None
         try:
@@ -465,7 +461,6 @@ class MainWindow(tk.Tk):
 
     # Layers UI interaction
     def _refresh_layers_panel(self):
-        # Guard in case called before side panel is built
         if not hasattr(self, "layers_list"):
             return
         self.layers_list.delete(0, "end")
