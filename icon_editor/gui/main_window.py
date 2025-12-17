@@ -10,6 +10,7 @@ from core.image_handler import (
     save_png_dialog,
 )
 from core.icon_generator import export_ico_dialog
+    # uses PIL to export ICO with preview
 from core.editor_tools import ToolType
 from gui.canvas_editor import CanvasEditor
 from gui.toolbar import ToolBar
@@ -24,32 +25,34 @@ class MainWindow(tk.Tk):
         self.geometry("1320x880")
         self.minsize(1100, 740)
 
+        # Config
         self.config_mgr = AppConfig()
         self.recent_files = self.config_mgr.recent_files.copy()
         self.theme = self.config_mgr.theme or "System"
 
+        # Theme
         self.style = ttk.Style()
         self._apply_theme(self.theme)
 
+        # State
         self.current_file: Path | None = None
-
         self.maintain_aspect = tk.BooleanVar(value=True)
         self.show_grid = tk.BooleanVar(value=False)
 
-        # Pending zoom text if early callback arrives
+        # If zoom arrives before statusbar exists
         self._pending_zoom = None
 
-        # Build order: menu -> statusbar -> layout (editor)
+        # Build in safe order so labels exist before editor callbacks
         self._build_menu()
         self._build_statusbar()
         self._build_layout()
 
-        # Initialize blank canvas AFTER editor exists to avoid early callbacks
+        # Initialize blank canvas AFTER canvas_editor exists
         self.after_idle(lambda: self.canvas_editor.new_blank((256, 256)))
 
         self._update_status("Ready")
 
-        # Key bindings
+        # Global shortcuts
         self.bind_all("<Control-o>", lambda e: self.open_image())
         self.bind_all("<Control-s>", lambda e: self.save_png())
         self.bind_all("<Control-e>", lambda e: self.export_ico())
@@ -57,7 +60,7 @@ class MainWindow(tk.Tk):
         self.bind_all("<Control-z>", lambda e: self.canvas_editor.undo())
         self.bind_all("<Control-Shift-Z>", lambda e: self.canvas_editor.redo())
         self.bind_all("<Control-y>", lambda e: self.canvas_editor.redo())
-        self.bind_all("<Key-f>", lambda e: self.canvas_editor.fit_to_window())
+        self.bind_all("<Key-f>", lambda e: self._fit_to_window())
 
         # Tool hotkeys
         self.bind_all("<Key-b>", lambda e: self._select_tool(ToolType.PENCIL))
@@ -110,6 +113,7 @@ class MainWindow(tk.Tk):
 
     def _build_menu(self):
         menubar = tk.Menu(self)
+
         # File
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="New (Ctrl+N)", command=self.new_canvas)
@@ -151,6 +155,7 @@ class MainWindow(tk.Tk):
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="About", command=self._about)
         menubar.add_cascade(label="Help", menu=help_menu)
+
         self.config(menu=menubar)
 
     def _build_layout(self):
@@ -166,6 +171,7 @@ class MainWindow(tk.Tk):
             on_fill_tolerance_change=self._on_fill_tolerance_change
         )
         self.toolbar.grid(row=0, column=0, sticky="ew")
+
         ttk.Separator(self, orient="horizontal").grid(row=1, column=0, sticky="ew")
 
         self.main_frame = ttk.Frame(self)
@@ -174,12 +180,12 @@ class MainWindow(tk.Tk):
         self.main_frame.columnconfigure(1, weight=0)
         self.main_frame.rowconfigure(0, weight=1)
 
-        # Side panel first (safe to reference self.canvas_editor in callbacks later)
+        # Build side panel first. Buttons will call wrapper methods (no lambda capture issues).
         self.side_panel = ttk.Frame(self.main_frame)
         self.side_panel.grid(row=0, column=1, sticky="ns", padx=(5, 10), pady=10)
         self._build_side_panel(self.side_panel)
 
-        # Canvas editor – defer callbacks to event loop
+        # Create CanvasEditor after side panel; defer callbacks to the event loop
         self.canvas_editor = CanvasEditor(
             self.main_frame,
             on_status=lambda msg: self.after_idle(lambda: self._update_status(msg)),
@@ -190,29 +196,35 @@ class MainWindow(tk.Tk):
         )
         self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
 
+        # Esc to deselect
         self.bind_all("<Escape>", lambda e: self._deselect())
 
     def _build_side_panel(self, parent):
+        # Info
         info_group = ttk.LabelFrame(parent, text="Image Info")
         info_group.pack(fill="x", pady=(0, 10))
         self.info_label = ttk.Label(info_group, text="No image loaded")
         self.info_label.pack(fill="x", padx=8, pady=8)
 
+        # Zoom
         zoom_group = ttk.LabelFrame(parent, text="View / Zoom")
         zoom_group.pack(fill="x", pady=(0, 10))
+
         self.zoom_var = tk.IntVar(value=4)
         zoom_scale = ttk.Scale(
             zoom_group, from_=1, to=16, orient="horizontal",
-            command=lambda v: self.canvas_editor.set_zoom(int(float(v)))
+            command=lambda v: self._set_zoom_from_scale(int(float(v)))
         )
         zoom_scale.set(4)
         zoom_scale.pack(fill="x", padx=8, pady=8)
+
         btn_row = ttk.Frame(zoom_group)
         btn_row.pack(fill="x", padx=8, pady=(0, 8))
-        ttk.Button(btn_row, text="Fit to Window (F)", command=self.canvas_editor.fit_to_window).pack(side="left")
-        ttk.Button(btn_row, text="Reset Scroll", command=self.canvas_editor.reset_scroll).pack(side="left", padx=(8, 0))
+        ttk.Button(btn_row, text="Fit to Window (F)", command=self._fit_to_window).pack(side="left")
+        ttk.Button(btn_row, text="Reset Scroll", command=self._reset_scroll).pack(side="left", padx=(8, 0))
         ttk.Label(zoom_group, text="Ctrl+Wheel Zoom • Space+Drag or Middle Button to Pan").pack(padx=8, pady=(4, 8))
 
+        # Sizes
         sizes_group = ttk.LabelFrame(parent, text="Target Icon Sizes")
         sizes_group.pack(fill="x", pady=(0, 10))
         self.size_vars = {}
@@ -222,31 +234,36 @@ class MainWindow(tk.Tk):
             cb.pack(anchor="w", padx=8)
             self.size_vars[size] = var
 
+        # Resampling
         resample_group = ttk.LabelFrame(parent, text="Resize Algorithm")
         resample_group.pack(fill="x", pady=(0, 10))
         self.resample_combo = ttk.Combobox(resample_group, values=["Nearest", "Bilinear", "Bicubic", "Lanczos"], state="readonly")
         self.resample_combo.set("Lanczos")
         self.resample_combo.pack(fill="x", padx=8, pady=8)
 
+        # Aspect
         ap_group = ttk.LabelFrame(parent, text="Resize Options")
         ap_group.pack(fill="x", pady=(0, 10))
         ttk.Checkbutton(ap_group, text="Maintain Aspect Ratio", variable=self.maintain_aspect).pack(anchor="w", padx=8)
         ttk.Label(ap_group, text="ICO frames are square; padding is applied when keeping aspect.").pack(anchor="w", padx=8, pady=(4, 0))
 
+        # Quick Actions (use wrapper methods so we don't capture canvas_editor before it exists)
         qa_group = ttk.LabelFrame(parent, text="Quick Actions")
         qa_group.pack(fill="x", pady=(0, 10))
-        ttk.Button(qa_group, text="Invert Colors", command=lambda: self.canvas_editor.quick_invert()).pack(fill="x", padx=8, pady=3)
-        ttk.Button(qa_group, text="Grayscale", command=lambda: self.canvas_editor.quick_grayscale()).pack(fill="x", padx=8, pady=3)
-        ttk.Button(qa_group, text="Flip Horizontal", command=lambda: self.canvas_editor.quick_flip_h()).pack(fill="x", padx=8, pady=3)
-        ttk.Button(qa_group, text="Flip Vertical", command=lambda: self.canvas_editor.quick_flip_v()).pack(fill="x", padx=8, pady=3)
-        ttk.Button(qa_group, text="Trim Transparent", command=lambda: self.canvas_editor.quick_trim_transparent()).pack(fill="x", padx=8, pady=3)
+        ttk.Button(qa_group, text="Invert Colors", command=self._quick_invert).pack(fill="x", padx=8, pady=3)
+        ttk.Button(qa_group, text="Grayscale", command=self._quick_grayscale).pack(fill="x", padx=8, pady=3)
+        ttk.Button(qa_group, text="Flip Horizontal", command=self._quick_flip_h).pack(fill="x", padx=8, pady=3)
+        ttk.Button(qa_group, text="Flip Vertical", command=self._quick_flip_v).pack(fill="x", padx=8, pady=3)
+        ttk.Button(qa_group, text="Trim Transparent", command=self._quick_trim).pack(fill="x", padx=8, pady=3)
         ttk.Button(qa_group, text="Make BG Transparent", command=self.make_bg_transparent).pack(fill="x", padx=8, pady=3)
 
+        # Layers
         layers_group = ttk.LabelFrame(parent, text="Layers")
         layers_group.pack(fill="both", expand=True, pady=(0, 10))
         self.layers_list = tk.Listbox(layers_group, height=8)
         self.layers_list.pack(fill="both", expand=True, padx=8, pady=6)
         self.layers_list.bind("<<ListboxSelect>>", self._on_layer_select)
+
         layer_btns = ttk.Frame(layers_group)
         layer_btns.pack(fill="x", padx=8, pady=(0, 8))
         ttk.Button(layer_btns, text="Add", command=self._layer_add).pack(side="left")
@@ -255,6 +272,7 @@ class MainWindow(tk.Tk):
         ttk.Button(layer_btns, text="Down", command=lambda: self._layer_move(1)).pack(side="left", padx=4)
         ttk.Button(layer_btns, text="Toggle Vis", command=self._layer_toggle_vis).pack(side="left", padx=4)
 
+        # File actions
         action_group = ttk.Frame(parent)
         action_group.pack(fill="x", pady=(10, 0))
         ttk.Button(action_group, text="Open Image...", command=self.open_image).pack(fill="x", pady=(0, 6))
@@ -265,17 +283,25 @@ class MainWindow(tk.Tk):
         self.statusbar = ttk.Frame(self)
         self.statusbar.grid(row=3, column=0, sticky="ew")
         self.statusbar.columnconfigure(0, weight=1)
+
         self.status_label = ttk.Label(self.statusbar, text="Status: Ready", anchor="w")
         self.status_label.grid(row=0, column=0, sticky="ew", padx=8)
+
         self.cursor_label = ttk.Label(self.statusbar, text="Cursor: -, -", width=20, anchor="e")
         self.cursor_label.grid(row=0, column=1, sticky="e", padx=8)
+
         self.dim_label = ttk.Label(self.statusbar, text="Canvas: 0x0", width=16, anchor="e")
         self.dim_label.grid(row=0, column=2, sticky="e", padx=8)
+
         self.zoom_label = ttk.Label(self.statusbar, text="Zoom: 4x", width=12, anchor="e")
         self.zoom_label.grid(row=0, column=3, sticky="e", padx=8)
+
+        # Apply pending zoom if any
         if self._pending_zoom is not None:
             self.zoom_label.config(text=f"Zoom: {self._pending_zoom}x")
             self._pending_zoom = None
+
+    # ---------------------- Update/Callback handlers ----------------------
 
     def _update_status(self, text):
         self.status_label.config(text=f"Status: {text}")
@@ -308,6 +334,8 @@ class MainWindow(tk.Tk):
         else:
             self._pending_zoom = zoom
 
+    # ---------------------- Toolbar -> CanvasEditor bridges ----------------------
+
     def _on_tool_change(self, tool: ToolType):
         self.canvas_editor.set_tool(tool)
 
@@ -322,6 +350,8 @@ class MainWindow(tk.Tk):
 
     def _on_fill_tolerance_change(self, tol: int):
         self.canvas_editor.set_fill_tolerance(tol)
+
+    # ---------------------- Menu actions ----------------------
 
     def _toggle_grid(self):
         self.canvas_editor.set_grid(self.show_grid.get())
@@ -343,6 +373,8 @@ class MainWindow(tk.Tk):
         self.config_mgr.theme = self.theme
         self.config_mgr.save()
         self.destroy()
+
+    # ---------------------- Recent files ----------------------
 
     def _refresh_recent_menu(self):
         self.recent_menu.delete(0, "end")
@@ -370,6 +402,8 @@ class MainWindow(tk.Tk):
         self.recent_files.insert(0, s)
         self.recent_files = self.recent_files[:5]
         self._refresh_recent_menu()
+
+    # ---------------------- File operations ----------------------
 
     def new_canvas(self):
         dialog = tk.Toplevel(self)
@@ -447,6 +481,8 @@ class MainWindow(tk.Tk):
             maintain_aspect=self.maintain_aspect.get()
         )
 
+    # ---------------------- Undo/Redo ----------------------
+
     def undo(self):
         self.canvas_editor.undo()
 
@@ -459,7 +495,51 @@ class MainWindow(tk.Tk):
     def make_bg_transparent(self):
         self.canvas_editor.make_background_transparent()
 
-    # Layers UI interaction
+    # ---------------------- Wrapper methods to avoid early attribute capture ----------------------
+
+    def _on_layer_select(self, event):
+        sel = self.layers_list.curselection()
+        if sel:
+            self.canvas_editor.set_active_layer(int(sel[0]))
+
+    def _layer_add(self):
+        self.canvas_editor.layer_add()
+
+    def _layer_delete(self):
+        self.canvas_editor.layer_delete()
+
+    def _layer_move(self, direction):
+        self.canvas_editor.layer_move(direction)
+
+    def _layer_toggle_vis(self):
+        self.canvas_editor.layer_toggle_visibility()
+
+    def _quick_invert(self):
+        self.canvas_editor.quick_invert()
+
+    def _quick_grayscale(self):
+        self.canvas_editor.quick_grayscale()
+
+    def _quick_flip_h(self):
+        self.canvas_editor.quick_flip_h()
+
+    def _quick_flip_v(self):
+        self.canvas_editor.quick_flip_v()
+
+    def _quick_trim(self):
+        self.canvas_editor.quick_trim_transparent()
+
+    def _fit_to_window(self):
+        self.canvas_editor.fit_to_window()
+
+    def _reset_scroll(self):
+        self.canvas_editor.reset_scroll()
+
+    def _set_zoom_from_scale(self, v):
+        self.canvas_editor.set_zoom(v)
+
+    # ---------------------- Layers panel refresh ----------------------
+
     def _refresh_layers_panel(self):
         if not hasattr(self, "layers_list"):
             return
