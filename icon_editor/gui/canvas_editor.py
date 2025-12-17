@@ -16,77 +16,76 @@ class CanvasEditor(ttk.Frame):
         self.on_zoom_change = on_zoom_change or (lambda z: None)
         self.on_layers_changed = on_layers_changed or (lambda: None)
 
-        # Layers: list of PIL Images (RGBA), visibilities, names
-        self.layers: list[Image.Image] = []
-        self.layer_visible: list[bool] = []
-        self.layer_names: list[str] = []
+        # Layers: created by new_blank/load_image (do not create here)
+        self.layers = []              # list[Image.Image]
+        self.layer_visible = []       # list[bool]
+        self.layer_names = []         # list[str]
         self.active_layer = 0
 
-        # Composite cache
-        self._composite_cache: Image.Image | None = None
+        self._composite_cache = None
         self._composite_dirty = True
 
-        # Display image
-        self._display_image = None  # PhotoImage reference
+        self._display_image = None
         self.zoom = 4
         self.show_grid = False
 
-        # Viewport panning state
         self._space_pan_active = False
 
-        # Tool and drawing state
         self.tool = ToolType.PENCIL
         self.brush_size = 1
         self.color = (0, 0, 0, 255)
         self.alpha = 255
         self.fill_tolerance = 0
 
-        # Selection state
         self.sel_active = False
         self.sel_start = None
-        self.sel_rect = None  # (x0,y0,x1,y1)
-        self.sel_floating = None  # floating Image of selection
-        self.sel_offset = (0, 0)  # top-left position of floating selection
+        self.sel_rect = None
+        self.sel_floating = None
+        self.sel_offset = (0, 0)
 
-        # Drawing gesture
         self.is_drawing = False
         self.last_pos = None
 
-        # Shape preview
         self.shape_start = None
-        self.preview_image = None  # PIL image overlay for preview strokes/shapes
+        self.preview_image = None
 
-        # Undo/Redo stores full layer stack
         self.history = UndoRedoStack(limit=50)
 
         self._build_ui()
+        # Do NOT call new_blank here; main_window will initialize after widget assignment
 
-    # Layers API
-    def _push_state(self):
-        # Deep copy layers and state
-        snapshot = {
-            "layers": [ly.copy() for ly in self.layers],
-            "visible": list(self.layer_visible),
-            "names": list(self.layer_names),
-            "active": self.active_layer,
-            "selection": (self.sel_active, self.sel_rect, self.sel_floating.copy() if self.sel_floating else None, self.sel_offset),
-        }
-        self.history.push(snapshot)
+    # ---------- Layers / Composite ----------
+    def width(self):
+        return self.layers[0].width if self.layers else 0
 
-    def _restore_state(self, snapshot):
-        self.layers = [ly.copy() for ly in snapshot["layers"]]
-        self.layer_visible = list(snapshot["visible"])
-        self.layer_names = list(snapshot["names"])
-        self.active_layer = snapshot["active"]
-        s_active, s_rect, s_float, s_off = snapshot["selection"]
-        self.sel_active = s_active
-        self.sel_rect = s_rect
-        self.sel_floating = s_float.copy() if s_float else None
-        self.sel_offset = s_off
-        self._mark_dirty()
-        self._refresh_display()
-        self.on_layers_changed()
-        self.on_size_change(self.width(), self.height())
+    def height(self):
+        return self.layers[0].height if self.layers else 0
+
+    def _mark_dirty(self):
+        self._composite_dirty = True
+
+    def get_composite(self):
+        if not self.layers:
+            return None
+        if self._composite_dirty or self._composite_cache is None:
+            base = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
+            for ly, vis in zip(self.layers, self.layer_visible):
+                if vis:
+                    base.alpha_composite(ly)
+            self._composite_cache = base
+            self._composite_dirty = False
+        return self._composite_cache.copy()
+
+    def _get_composite_with_preview(self):
+        comp = self.get_composite()
+        if comp is None:
+            return None
+        comp = comp.copy()
+        if self.sel_floating is not None:
+            comp.alpha_composite(self.sel_floating, self.sel_offset)
+        if self.preview_image is not None:
+            comp.alpha_composite(self.preview_image)
+        return comp
 
     def active_layer_index(self):
         return self.active_layer
@@ -113,9 +112,7 @@ class CanvasEditor(ttk.Frame):
         self.on_layers_changed()
 
     def layer_delete(self):
-        if not self.layers:
-            return
-        if len(self.layers) == 1:
+        if len(self.layers) <= 1:
             messagebox.showinfo("Cannot delete", "At least one layer is required.")
             return
         self._push_state()
@@ -128,7 +125,6 @@ class CanvasEditor(ttk.Frame):
         self.on_layers_changed()
 
     def layer_move(self, direction: int):
-        # direction -1 up, +1 down
         i = self.active_layer
         j = i + direction
         if 0 <= i < len(self.layers) and 0 <= j < len(self.layers):
@@ -142,47 +138,15 @@ class CanvasEditor(ttk.Frame):
             self.on_layers_changed()
 
     def layer_toggle_visibility(self):
+        if not self.layers:
+            return
         self._push_state()
         self.layer_visible[self.active_layer] = not self.layer_visible[self.active_layer]
         self._mark_dirty()
         self._refresh_display()
         self.on_layers_changed()
 
-    def width(self):
-        return self.layers[0].width if self.layers else 0
-
-    def height(self):
-        return self.layers[0].height if self.layers else 0
-
-    def _mark_dirty(self):
-        self._composite_dirty = True
-
-    def get_composite(self):
-        if not self.layers:
-            return None
-        if self._composite_dirty or self._composite_cache is None:
-            base = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
-            for ly, vis in zip(self.layers, self.layer_visible):
-                if vis:
-                    base.alpha_composite(ly)
-            # If floating selection exists, overlay it on composite for preview/export decisions not. For export/save we flatten without floating.
-            # Here we return flattened without floating selection to avoid accidental export of uncommitted floats.
-            self._composite_cache = base
-            self._composite_dirty = False
-        return self._composite_cache.copy()
-
-    def _get_composite_with_preview(self):
-        comp = self.get_composite()
-        if comp is None:
-            return None
-        comp = comp.copy()
-        if self.sel_floating is not None:
-            comp.alpha_composite(self.sel_floating, self.sel_offset)
-        if self.preview_image is not None:
-            comp.alpha_composite(self.preview_image)
-        return comp
-
-    # UI setup
+    # ---------- UI setup ----------
     def _build_ui(self):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
@@ -224,23 +188,20 @@ class CanvasEditor(ttk.Frame):
             self.fit_to_window()
             self._first_fit_done = True
 
-    # Project image lifecycle
+    # ---------- Project lifecycle ----------
     def new_blank(self, size):
         w, h = size
         self.layers = [Image.new("RGBA", (w, h), (0, 0, 0, 0))]
         self.layer_visible = [True]
         self.layer_names = ["Layer 1"]
         self.active_layer = 0
-        self.sel_active = False
-        self.sel_rect = None
-        self.sel_floating = None
-        self.preview_image = None
+        self._reset_selection()
         self.history.clear()
         self._push_state()
         self._mark_dirty()
         self.fit_to_window()
-        self.on_status(f"New {size[0]}x{size[1]} canvas")
-        self.on_size_change(*size)
+        self.on_status(f"New {w}x{h} canvas")
+        self.on_size_change(w, h)
         self.on_layers_changed()
 
     def load_image(self, image):
@@ -249,10 +210,7 @@ class CanvasEditor(ttk.Frame):
         self.layer_visible = [True]
         self.layer_names = ["Background"]
         self.active_layer = 0
-        self.sel_active = False
-        self.sel_rect = None
-        self.sel_floating = None
-        self.preview_image = None
+        self._reset_selection()
         self.history.clear()
         self._push_state()
         self._mark_dirty()
@@ -261,7 +219,15 @@ class CanvasEditor(ttk.Frame):
         self.on_size_change(img.width, img.height)
         self.on_layers_changed()
 
-    # View controls
+    def _reset_selection(self):
+        self.sel_active = False
+        self.sel_start = None
+        self.sel_rect = None
+        self.sel_floating = None
+        self.sel_offset = (0, 0)
+        self.preview_image = None
+
+    # ---------- View controls ----------
     def set_zoom(self, zoom: int):
         zoom = clamp(zoom, 1, 16)
         if self.zoom != zoom:
@@ -307,9 +273,9 @@ class CanvasEditor(ttk.Frame):
         self.show_grid = show
         self._refresh_display()
 
-    # Tool settings
+    # ---------- Tool settings ----------
     def set_tool(self, tool: ToolType):
-        # If switching away from move with floating selection, commit
+        # Commit floating selection if leaving MOVE
         if self.tool == ToolType.MOVE and self.sel_floating is not None and tool != ToolType.MOVE:
             self._commit_floating_selection()
         self.tool = tool
@@ -338,8 +304,10 @@ class CanvasEditor(ttk.Frame):
         self.fill_tolerance = clamp(int(tol), 0, 255)
         self.on_status(f"Fill tolerance: {self.fill_tolerance}")
 
-    # Quick Actions (act on active layer; trim acts on all)
+    # ---------- Quick Actions ----------
     def quick_invert(self):
+        if not self.layers:
+            return
         ly = self.layers[self.active_layer]
         self._push_state()
         r, g, b, a = ly.split()
@@ -350,14 +318,17 @@ class CanvasEditor(ttk.Frame):
         self.on_status("Inverted colors")
 
     def quick_grayscale(self):
-        ly = self.layers[self.active_layer]
+        if not self.layers:
+            return
         self._push_state()
-        self.layers[self.active_layer] = ImageOps.grayscale(ly).convert("RGBA")
+        self.layers[self.active_layer] = ImageOps.grayscale(self.layers[self.active_layer]).convert("RGBA")
         self._mark_dirty()
         self._refresh_display()
         self.on_status("Grayscale applied")
 
     def quick_flip_h(self):
+        if not self.layers:
+            return
         self._push_state()
         self.layers[self.active_layer] = self.layers[self.active_layer].transpose(Image.FLIP_LEFT_RIGHT)
         self._mark_dirty()
@@ -365,6 +336,8 @@ class CanvasEditor(ttk.Frame):
         self.on_status("Flipped horizontally")
 
     def quick_flip_v(self):
+        if not self.layers:
+            return
         self._push_state()
         self.layers[self.active_layer] = self.layers[self.active_layer].transpose(Image.FLIP_TOP_BOTTOM)
         self._mark_dirty()
@@ -380,7 +353,6 @@ class CanvasEditor(ttk.Frame):
             self.on_status("Nothing to trim (no opaque pixels)")
             return
         self._push_state()
-        x0, y0, x1, y1 = bbox
         for i in range(len(self.layers)):
             self.layers[i] = self.layers[i].crop(bbox)
         self._mark_dirty()
@@ -389,17 +361,18 @@ class CanvasEditor(ttk.Frame):
         self.on_layers_changed()
         self.on_status("Trimmed transparent borders")
 
-    # Selection
+    # ---------- Selection ----------
     def clear_selection(self):
         if self.sel_floating is not None:
             self._commit_floating_selection()
         self.sel_active = False
+        self.sel_start = None
         self.sel_rect = None
         self.preview_image = None
         self._refresh_display()
         self.on_status("Selection cleared")
 
-    # Events and drawing logic
+    # ---------- Events / Input ----------
     def _on_space_down(self, event):
         self._space_pan_active = True
         self.canvas.config(cursor="fleur")
@@ -429,9 +402,8 @@ class CanvasEditor(ttk.Frame):
         return ix, iy
 
     def _on_mouse_move(self, event):
-        comp_w, comp_h = self.width(), self.height()
         ix, iy = self._canvas_to_image(event.x, event.y)
-        if 0 <= ix < comp_w and 0 <= iy < comp_h:
+        if 0 <= ix < self.width() and 0 <= iy < self.height():
             self.on_cursor(ix, iy)
         else:
             self.on_cursor(None, None)
@@ -448,7 +420,6 @@ class CanvasEditor(ttk.Frame):
         if not (0 <= ix < self.width() and 0 <= iy < self.height()):
             return
 
-        # For many operations, push state
         self._push_state()
 
         if self.tool == ToolType.PENCIL:
@@ -474,18 +445,12 @@ class CanvasEditor(ttk.Frame):
             self.sel_rect = (ix, iy, ix, iy)
         elif self.tool == ToolType.MOVE:
             if self.sel_floating is None and self.sel_rect and self._point_in_rect((ix, iy), self.sel_rect):
-                # Cut selection into floating
                 x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
-                w, h = x1 - x0, y1 - y0
                 box = (x0, y0, x1, y1)
                 self.sel_floating = self.layers[self.active_layer].crop(box)
-                # clear area
                 draw = ImageDraw.Draw(self.layers[self.active_layer])
                 draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0, 0))
                 self.sel_offset = (x0, y0)
-            elif self.sel_floating is not None:
-                # Prepare to drag
-                pass
         elif self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE):
             self.shape_start = (ix, iy)
             self.preview_image = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
@@ -510,8 +475,8 @@ class CanvasEditor(ttk.Frame):
             return
 
         ix, iy = self._canvas_to_image(event.x, event.y)
-        ix = clamp(ix, 0, self.width() - 1)
-        iy = clamp(iy, 0, self.height() - 1)
+        ix = clamp(ix, 0, max(1, self.width()) - 1)
+        iy = clamp(iy, 0, max(1, self.height()) - 1)
 
         if self.tool == ToolType.PENCIL:
             draw_brush_line(self.layers[self.active_layer], self.last_pos, (ix, iy), self.color, self.brush_size)
@@ -521,7 +486,6 @@ class CanvasEditor(ttk.Frame):
             x0, y0 = self.sel_start
             self.sel_rect = (x0, y0, ix, iy)
         elif self.tool == ToolType.MOVE and self.sel_floating is not None:
-            # drag floating selection
             dx = ix - self.last_pos[0]
             dy = iy - self.last_pos[1]
             self.sel_offset = (self.sel_offset[0] + dx, self.sel_offset[1] + dy)
@@ -535,11 +499,7 @@ class CanvasEditor(ttk.Frame):
     def _on_mouse_up(self, event):
         if not self.layers:
             return
-        if self.tool == ToolType.MOVE:
-            # keep floating until change tool or deselect
-            pass
-        elif self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE) and self.shape_start:
-            # commit shape
+        if self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE) and self.shape_start:
             self._commit_shape(self.shape_start, self.last_pos)
             self.shape_start = None
             self.preview_image = None
@@ -570,9 +530,8 @@ class CanvasEditor(ttk.Frame):
             new_zoom = clamp(self.zoom + delta, 1, 16)
             self.set_zoom(new_zoom)
 
-    # Drawing helpers
+    # ---------- Drawing helpers ----------
     def _draw_point(self, x, y, color):
-        # Bounds check fix
         if not (0 <= x < self.width() and 0 <= y < self.height()):
             return
         half = self.brush_size // 2
@@ -584,7 +543,6 @@ class CanvasEditor(ttk.Frame):
         self._push_state()
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
         try:
-            # Try a common font shipped with Pillow
             font = ImageFont.truetype("DejaVuSans.ttf", size_px)
         except Exception:
             font = ImageFont.load_default()
@@ -644,7 +602,32 @@ class CanvasEditor(ttk.Frame):
             self.on_status("Ellipse drawn")
         self._mark_dirty()
 
-    # Undo/Redo (restore full layer state)
+    # ---------- Undo / Redo ----------
+    def _push_state(self):
+        snapshot = {
+            "layers": [ly.copy() for ly in self.layers],
+            "visible": list(self.layer_visible),
+            "names": list(self.layer_names),
+            "active": self.active_layer,
+            "selection": (self.sel_active, self.sel_rect, self.sel_floating.copy() if self.sel_floating else None, self.sel_offset),
+        }
+        self.history.push(snapshot)
+
+    def _restore_state(self, snapshot):
+        self.layers = [ly.copy() for ly in snapshot["layers"]]
+        self.layer_visible = list(snapshot["visible"])
+        self.layer_names = list(snapshot["names"])
+        self.active_layer = snapshot["active"]
+        s_active, s_rect, s_float, s_off = snapshot["selection"]
+        self.sel_active = s_active
+        self.sel_rect = s_rect
+        self.sel_floating = s_float.copy() if s_float else None
+        self.sel_offset = s_off
+        self._mark_dirty()
+        self._refresh_display()
+        self.on_layers_changed()
+        self.on_size_change(self.width(), self.height())
+
     def undo(self):
         snap = self.history.undo()
         if snap is not None:
@@ -657,6 +640,7 @@ class CanvasEditor(ttk.Frame):
             self._restore_state(snap)
             self.on_status("Redo")
 
+    # ---------- BG transparent ----------
     def make_background_transparent(self):
         if not self.layers:
             return
@@ -674,7 +658,7 @@ class CanvasEditor(ttk.Frame):
         self._refresh_display()
         self.on_status("Background made transparent")
 
-    # Rendering
+    # ---------- Rendering ----------
     def _compose_display_image(self):
         if not self.layers:
             return None
@@ -683,7 +667,6 @@ class CanvasEditor(ttk.Frame):
         if comp is None:
             return None
 
-        # Draw selection rectangle on top
         if self.sel_active and self.sel_rect:
             x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
             overlay = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
