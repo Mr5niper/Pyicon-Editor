@@ -11,7 +11,6 @@ class ToolBar(ttk.Frame):
         self.on_alpha_change = on_alpha_change
         self.on_color_change = on_color_change
         self.on_fill_tolerance_change = on_fill_tolerance_change
-
         self._build_ui()
 
     def set_tool(self, tool: ToolType):
@@ -25,7 +24,6 @@ class ToolBar(ttk.Frame):
         self.columnconfigure(3, weight=1)
         self.columnconfigure(4, weight=1)
 
-        # Tool Buttons - now includes selection, move, text, shapes
         tool_frame = ttk.Frame(self)
         tool_frame.grid(row=0, column=0, sticky="w", padx=8, pady=6)
 
