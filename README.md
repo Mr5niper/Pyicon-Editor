@@ -9,7 +9,9 @@ A full-featured, cross-platform icon creator and editor written in Python. Creat
 ---
 
 ## GUI Overview & Controls
-
+<br>
+<img width="1402" height="952" alt="image" src="https://github.com/user-attachments/assets/a8648f4c-360a-48b9-8bc4-1ddb9ece98fa" />
+<br>
 The application features a streamlined, single-row ribbon toolbar at the top of the window, divided into logical groups from left to right:
 
 ### 1. File Operations
