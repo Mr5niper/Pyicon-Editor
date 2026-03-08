@@ -8,7 +8,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules
 
 project_root = Path.cwd().resolve()
-app_icon = None  # Set to icon path if you have one
+app_icon = 'icon.ico'
 
 block_cipher = None
 
@@ -25,7 +25,7 @@ a = Analysis(
     ['icon_editor/main.py'],
     pathex=[str(project_root)],
     binaries=[],
-    datas=[],
+    datas=[('icon.ico', '.')],  
     hiddenimports=hidden,
     hookspath=[],
     hooksconfig={},
