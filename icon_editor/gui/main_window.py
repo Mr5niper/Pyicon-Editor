@@ -157,8 +157,8 @@ class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Pyicon Editor and Creator v1.1.0.0")
-        # Increase width from 1400 to 1650 (approx 1/4 wider)
-        self.geometry("1560x900")
+        # Keep your exact frame size and attach the 20px screen edge offsets
+        self.geometry("1560x900+20+20")
         self.minsize(1350, 720)
         
         self._set_app_icon() 
