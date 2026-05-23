@@ -504,6 +504,9 @@ class MainWindow(tk.Tk):
         # Toggle internal state based on current label text
         # Better: keep a BooleanVar if you want live check; here we just toggle canvas flag.
         self.canvas_editor.set_grid(not self.canvas_editor.show_grid)
+        
+        # CRITICAL: Force the canvas to redraw itself immediately so you see the grid
+        self.canvas_editor._refresh_display()
 
     def _about(self):
         messagebox.showinfo(
