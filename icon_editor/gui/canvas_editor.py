@@ -634,10 +634,13 @@ class CanvasEditor(ttk.Frame):
     def _update_shape_preview(self, start, end):
         self.preview_image = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
         draw = ImageDraw.Draw(self.preview_image, "RGBA")
-        x0, y0 = start
-        x1, y1 = end
+        
+        # Normalize the coordinates instantly to allow multi-directional drawing
+        x0, y0, x1, y1 = self._norm_rect((start[0], start[1], end[0], end[1]))
+        
         if self.tool == ToolType.SHAPE_LINE:
-            draw.line([x0, y0, x1, y1], fill=self.color, width=self.brush_size)
+            # Lines don't require sorting, use original track points
+            draw.line([start[0], start[1], end[0], end[1]], fill=self.color, width=self.brush_size)
         elif self.tool == ToolType.SHAPE_RECT:
             draw.rectangle([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
         elif self.tool == ToolType.SHAPE_ELLIPSE:
@@ -645,10 +648,12 @@ class CanvasEditor(ttk.Frame):
 
     def _commit_shape(self, start, end):
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
-        x0, y0 = start
-        x1, y1 = end
+        
+        # Normalize coordinates before final commitment to the layer
+        x0, y0, x1, y1 = self._norm_rect((start[0], start[1], end[0], end[1]))
+        
         if self.tool == ToolType.SHAPE_LINE:
-            draw.line([x0, y0, x1, y1], fill=self.color, width=self.brush_size)
+            draw.line([start[0], start[1], end[0], end[1]], fill=self.color, width=self.brush_size)
             self.on_status("Line drawn")
         elif self.tool == ToolType.SHAPE_RECT:
             draw.rectangle([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
