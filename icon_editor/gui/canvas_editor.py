@@ -703,21 +703,29 @@ class CanvasEditor(ttk.Frame):
         comp = self._get_composite_with_preview()
         if comp is None:
             return None
-            
-        if self.sel_active and self.sel_rect:
-            x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
-            overlay = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
-            d = ImageDraw.Draw(overlay)
-            d.rectangle([x0, y0, x1, y1], outline=(0, 200, 255, 255), width=1)
-            comp.alpha_composite(overlay)
 
-        # Generate or reuse the static background checkerboard layer cache
+        # 1. Handle or initialize the background checkerboard cache
         if self._bg_cache is None or self._bg_cache.size != comp.size:
             self._bg_cache = create_checkerboard((comp.width, comp.height), square_size=8).convert("RGBA")
             
         composed = Image.alpha_composite(self._bg_cache, comp)
+        
+        # 2. Scale the canvas layer via Nearest Neighbor
         if self.zoom != 1:
             composed = composed.resize((comp.width * self.zoom, comp.height * self.zoom), Image.NEAREST)
+            
+        # 3. Apply the Selection Marquee on top of the scaled output
+        if self.sel_active and self.sel_rect:
+            x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
+            draw = ImageDraw.Draw(composed)
+            # Scale coordinates up to match the current zoom viewpoint configuration
+            draw.rectangle(
+                [x0 * self.zoom, y0 * self.zoom, x1 * self.zoom, y1 * self.zoom], 
+                outline=(0, 200, 255, 255), 
+                width=1
+            )
+
+        # 4. Lay down the guide grid lines safely
         if self.show_grid and self.zoom >= 4:
             draw = ImageDraw.Draw(composed)
             w, h = composed.size
@@ -725,6 +733,7 @@ class CanvasEditor(ttk.Frame):
                 draw.line([(x, 0), (x, h)], fill=(0, 0, 0, 40))
             for y in range(0, h, self.zoom):
                 draw.line([(0, y), (w, y)], fill=(0, 0, 0, 40))
+                
         return composed
 
     def _refresh_display(self):
