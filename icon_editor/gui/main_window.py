@@ -157,8 +157,9 @@ class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Pyicon Editor and Creator v1.1.0.0")
-        self.geometry("1400x900")
-        self.minsize(1100, 720)
+        # Increase width from 1400 to 1650 (approx 1/4 wider)
+        self.geometry("1650x900")
+        self.minsize(1350, 720)
         
         self._set_app_icon() 
 
@@ -338,12 +339,14 @@ class MainWindow(tk.Tk):
         # Brush size
         size_grp = ttk.Frame(self.toolbar)
         size_grp.pack(side="left", padx=(0, 8))
+        # Brush size slider
         ttk.Label(size_grp, text="Size").pack(side="left", padx=(0, 4))
         self.brush_size_var = tk.IntVar(value=5)
         size_scale = ttk.Scale(size_grp, from_=1, to=64, orient="horizontal",
                                command=lambda v: self._on_brush_size_change(int(float(v))))
         size_scale.set(5)
-        size_scale.pack(side="left", ipadx=40)
+        # Drop ipadx and allow natural layout expansion
+        size_scale.pack(side="left", fill="x", expand=True, padx=2)
         Tooltip(size_scale, "Brush Size")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
@@ -358,17 +361,19 @@ class MainWindow(tk.Tk):
         Tooltip(self.color_display, "Pick Color")
         ttk.Label(color_grp, text="Alpha").pack(side="left", padx=(10, 4))
         self.alpha_var = tk.IntVar(value=255)
+        # Alpha slider
         alpha_scale = ttk.Scale(color_grp, from_=0, to=255, orient="horizontal",
                                 command=lambda v: self._on_alpha_change(int(float(v))))
         alpha_scale.set(255)
-        alpha_scale.pack(side="left", ipadx=30)
+        alpha_scale.pack(side="left", fill="x", expand=True, padx=2)
         Tooltip(alpha_scale, "Alpha (opacity 0–255)")
         ttk.Label(color_grp, text="Tol").pack(side="left", padx=(10, 4))
         self.tol_var = tk.IntVar(value=0)
+        # Tolerance slider
         tol_scale = ttk.Scale(color_grp, from_=0, to=100, orient="horizontal",
                               command=lambda v: self.canvas_editor.set_fill_tolerance(int(float(v))))
         tol_scale.set(0)
-        tol_scale.pack(side="left", ipadx=30)
+        tol_scale.pack(side="left", fill="x", expand=True, padx=2)
         Tooltip(tol_scale, "Fill Tolerance")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
