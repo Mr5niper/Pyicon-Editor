@@ -26,6 +26,8 @@ class CanvasEditor(ttk.Frame):
         self.on_layers_changed = on_layers_changed or (lambda: None)
         self.on_color_ui = on_color_ui or (lambda rgba: None)
 
+        self._bg_cache = None
+
         # Layers are created by new_blank/load_image
         self.layers: list[Image.Image] = []
         self.layer_visible: list[bool] = []
@@ -449,11 +451,13 @@ class CanvasEditor(ttk.Frame):
             comp = self._get_composite_with_preview() or self.get_composite()
             if comp:
                 try:
-                    r, g, b, a = comp.getpixel((ix, iy))
-                    # Use set_color so UI callback runs
+                    # Explicitly lock the coordinates to target pixel integers
+                    cx = max(0, min(int(ix), comp.width - 1))
+                    cy = max(0, min(int(iy), comp.height - 1))
+                    r, g, b, a = comp.getpixel((cx, cy))
                     self.set_color((r, g, b, a))
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Eyedropper sample failed: {e}")
         elif self.tool == ToolType.FILL:
             flood_fill(self.layers[self.active_layer], (ix, iy), self.color, tolerance=self.fill_tolerance)
         elif self.tool == ToolType.MAGIC_ERASER:
@@ -554,18 +558,32 @@ class CanvasEditor(ttk.Frame):
     def _draw_point(self, x, y, color):
         if not (0 <= x < self.width() and 0 <= y < self.height()):
             return
-        half = self.brush_size // 2
-        bbox = (x - half, y - half, x + half, y + half)
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
-        draw.ellipse([bbox[0], bbox[1], bbox[2], bbox[3]], fill=color)
+        half = self.brush_size // 2
+        
+        if self.brush_size <= 1:
+            draw.point((x, y), fill=color)
+        else:
+            # Strict integer pixel bounding box configuration
+            bbox = [x - half, y - half, x + half, y + half]
+            draw.ellipse(bbox, fill=color)
 
     def _draw_text(self, x, y, text, size_px):
         self._push_state()
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
-        try:
-            font = ImageFont.truetype("DejaVuSans.ttf", size_px)
-        except Exception:
+        
+        font = None
+        # Check common cross-platform font fallbacks
+        for font_name in ["arial.ttf", "calibri.ttf", "Helvetica.ttf", "DejaVuSans.ttf"]:
+            try:
+                font = ImageFont.truetype(font_name, size_px)
+                break
+            except IOError:
+                continue
+                
+        if font is None:
             font = ImageFont.load_default()
+            
         draw.text((x, y), text, fill=self.color, font=font)
         self._mark_dirty()
         self._refresh_display()
@@ -685,14 +703,19 @@ class CanvasEditor(ttk.Frame):
         comp = self._get_composite_with_preview()
         if comp is None:
             return None
+            
         if self.sel_active and self.sel_rect:
             x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
             overlay = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
             d = ImageDraw.Draw(overlay)
             d.rectangle([x0, y0, x1, y1], outline=(0, 200, 255, 255), width=1)
             comp.alpha_composite(overlay)
-        bg = create_checkerboard((comp.width, comp.height), square_size=8)
-        composed = Image.alpha_composite(bg.convert("RGBA"), comp)
+
+        # Generate or reuse the static background checkerboard layer cache
+        if self._bg_cache is None or self._bg_cache.size != comp.size:
+            self._bg_cache = create_checkerboard((comp.width, comp.height), square_size=8).convert("RGBA")
+            
+        composed = Image.alpha_composite(self._bg_cache, comp)
         if self.zoom != 1:
             composed = composed.resize((comp.width * self.zoom, comp.height * self.zoom), Image.NEAREST)
         if self.show_grid and self.zoom >= 4:
