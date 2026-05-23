@@ -403,9 +403,11 @@ class CanvasEditor(ttk.Frame):
         self._push_state()
         x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
         
-        # Draw a transparent rectangle directly onto the active layer
+        # Draw a transparent rectangle. 
+        # By using x1 and y1 directly (exclusive boundary), 
+        # Pillow will cover the range from x0 to x1-1 (which includes the last pixel).
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
-        draw.rectangle([x0, y0, x1 - 1, y1 - 1], fill=(0, 0, 0, 0))
+        draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0, 0))
         
         self._mark_dirty()
         self._refresh_display()
@@ -741,9 +743,9 @@ class CanvasEditor(ttk.Frame):
         if self.sel_active and self.sel_rect:
             x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
             draw = ImageDraw.Draw(composed)
-            # Scale coordinates up to match the current zoom viewpoint configuration
+            # Add +1 to the right and bottom coordinates to include the last pixel
             draw.rectangle(
-                [x0 * self.zoom, y0 * self.zoom, x1 * self.zoom, y1 * self.zoom], 
+                [x0 * self.zoom, y0 * self.zoom, (x1 + 1) * self.zoom, (y1 + 1) * self.zoom], 
                 outline=(0, 200, 255, 255), 
                 width=1
             )
