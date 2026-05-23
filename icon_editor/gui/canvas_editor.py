@@ -484,9 +484,10 @@ class CanvasEditor(ttk.Frame):
             r, g, b, a = self.layers[self.active_layer].getpixel((ix, iy))
             flood_fill(self.layers[self.active_layer], (ix, iy), (r, g, b, 0), tolerance=self.fill_tolerance)
         elif self.tool == ToolType.SELECTION:
+            # Deselect if clicking on a new area without dragging
             self.sel_active = True
             self.sel_start = (ix, iy)
-            self.sel_rect = (ix, iy, ix, iy)
+            self.sel_rect = None  # Don't create a 1x1 box yet; wait for drag
         elif self.tool == ToolType.MOVE:
             if self.sel_floating is None and self.sel_rect and self._point_in_rect((ix, iy), self.sel_rect):
                 x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
@@ -526,9 +527,11 @@ class CanvasEditor(ttk.Frame):
             draw_brush_line(self.layers[self.active_layer], self.last_pos, (ix, iy), self.color, self.brush_size)
         elif self.tool == ToolType.ERASER:
             draw_brush_line(self.layers[self.active_layer], self.last_pos, (ix, iy), (0, 0, 0, 0), self.brush_size)
-        elif self.tool == ToolType.SELECTION and self.sel_active and self.sel_start:
-            x0, y0 = self.sel_start
-            self.sel_rect = (x0, y0, ix, iy)
+        elif self.tool == ToolType.SELECTION and self.sel_active:
+            # Only start the rectangle once the mouse has moved from the start point
+            if self.sel_start:
+                x0, y0 = self.sel_start
+                self.sel_rect = (x0, y0, ix, iy)
         elif self.tool == ToolType.MOVE and self.sel_floating is not None:
             dx = ix - self.last_pos[0]
             dy = iy - self.last_pos[1]
@@ -543,6 +546,11 @@ class CanvasEditor(ttk.Frame):
     def _on_mouse_up(self, event):
         if not self.layers:
             return
+        
+        # If we clicked but never dragged (sel_rect is still None), clear selection
+        if self.tool == ToolType.SELECTION and self.sel_active and self.sel_rect is None:
+            self.clear_selection()
+            
         if self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE) and self.shape_start:
             self._commit_shape(self.shape_start, self.last_pos)
             self.shape_start = None
