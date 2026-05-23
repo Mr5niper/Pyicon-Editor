@@ -102,13 +102,26 @@ def export_icns_dialog(parent, base_image: Image.Image, sizes: list[int], resamp
     preview.title("Preview & Export ICNS (macOS)")
     preview.resizable(False, False)
     
-    # UI setup is identical to your existing export_ico_dialog
     frm = ttk.Frame(preview, padding=10)
     frm.pack(fill="both", expand=True)
-    ttk.Label(frm, text="Preparing icon set for macOS (ICNS):").pack(anchor="w", pady=(0, 8))
+    ttk.Label(frm, text="Preview of generated sizes:").pack(anchor="w", pady=(0, 8))
 
-    # (Logic to prep thumbs remains the same as export_ico_dialog)
-    # ... [same logic as export_ico_dialog]
+    # --- Thumbnail Preview Logic ---
+    thumbs = []
+    for size in sizes:
+        img = prepare_image_for_size(base_image, size, resample, maintain_aspect, pad_to_square=True)
+        # Create small thumbnails for the UI list
+        thumb = img.resize((min(64, size), min(64, size)), Image.NEAREST)
+        tkimg = ImageTk.PhotoImage(thumb)
+        
+        line = ttk.Frame(frm)
+        line.pack(fill="x", pady=2)
+        ttk.Label(line, text=f"{size}x{size}").pack(side="left", padx=(0, 8))
+        lbl = ttk.Label(line, image=tkimg)
+        lbl.image = tkimg # Keep reference
+        lbl.pack(side="left")
+        
+        thumbs.append((size, img))
 
     def do_export():
         out_path_str = filedialog.asksaveasfilename(
@@ -121,15 +134,19 @@ def export_icns_dialog(parent, base_image: Image.Image, sizes: list[int], resamp
         if not out_path_str:
             return
         
-        # NOTE: You will need a library like 'icnsutil' to convert
-        # the list of images into a single valid .icns file.
         try:
-            messagebox.showinfo("Exporting", "ICNS export hook ready. Integrate icnsutil here.")
+            # Create the ICNS container
+            icns = icnsutil.IcnsFile()
+            for sz, im in thumbs:
+                icns.add_data(im, 'PNG', size=sz)
+            
+            icns.write(out_path_str)
+            messagebox.showinfo("Exported", f"Successfully saved to:\n{out_path_str}")
             preview.destroy()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to export ICNS:\n{e}")
 
-    ttk.Button(frm, text="Export", command=do_export).pack(pady=10)
+    ttk.Button(frm, text="Export ICNS", command=do_export).pack(pady=10)
     parent.wait_window(preview)
 
 def pil_to_png_bytes(im: Image.Image) -> bytes:
