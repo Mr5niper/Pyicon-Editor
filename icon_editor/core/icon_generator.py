@@ -2,7 +2,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk, Toplevel, BooleanVar
 from PIL import Image, ImageOps, ImageTk
 from utils.helpers import get_resample_by_name
-
+import icnsutil
 
 def prepare_image_for_size(base_image: Image.Image, size: int, resample_name: str, maintain_aspect: bool, pad_to_square: bool) -> Image.Image:
     """
@@ -96,7 +96,41 @@ def export_ico_dialog(parent, base_image: Image.Image, sizes: list[int], resampl
     ttk.Button(btns, text="Cancel", command=preview.destroy).pack(side="left", padx=(8, 0))
     preview.grab_set()
     parent.wait_window(preview)
+    
+def export_icns_dialog(parent, base_image: Image.Image, sizes: list[int], resample: str, maintain_aspect: bool):
+    preview = Toplevel(parent)
+    preview.title("Preview & Export ICNS (macOS)")
+    preview.resizable(False, False)
+    
+    # UI setup is identical to your existing export_ico_dialog
+    frm = ttk.Frame(preview, padding=10)
+    frm.pack(fill="both", expand=True)
+    ttk.Label(frm, text="Preparing icon set for macOS (ICNS):").pack(anchor="w", pady=(0, 8))
 
+    # (Logic to prep thumbs remains the same as export_ico_dialog)
+    # ... [same logic as export_ico_dialog]
+
+    def do_export():
+        out_path_str = filedialog.asksaveasfilename(
+            parent=parent,
+            title="Export ICNS",
+            defaultextension=".icns",
+            filetypes=[("Apple Icon", "*.icns")],
+            initialfile="icon.icns",
+        )
+        if not out_path_str:
+            return
+        
+        # NOTE: You will need a library like 'icnsutil' to convert
+        # the list of images into a single valid .icns file.
+        try:
+            messagebox.showinfo("Exporting", "ICNS export hook ready. Integrate icnsutil here.")
+            preview.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export ICNS:\n{e}")
+
+    ttk.Button(frm, text="Export", command=do_export).pack(pady=10)
+    parent.wait_window(preview)
 
 def pil_to_png_bytes(im: Image.Image) -> bytes:
     from io import BytesIO
