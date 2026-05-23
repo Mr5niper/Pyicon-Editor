@@ -685,6 +685,7 @@ class MainWindow(tk.Tk):
         self.bind("<Control-z>", lambda event: self.undo())
         self.bind("<Control-y>", lambda event: self.redo())
         self.bind("<Escape>", lambda event: self._deselect())
+        self.bind("<Delete>", lambda event: self.canvas_editor.delete_selection())
         
         # View operations
         self.bind("<f>", lambda event: self._fit_to_window())
