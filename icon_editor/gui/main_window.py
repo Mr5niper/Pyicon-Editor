@@ -500,13 +500,18 @@ class MainWindow(tk.Tk):
         self.canvas_editor.set_brush_size(int(size))
 
     # ---------------- Menu actions ----------------
-    def _toggle_grid(self):
-        # Toggle internal state based on current label text
-        # Better: keep a BooleanVar if you want live check; here we just toggle canvas flag.
-        self.canvas_editor.set_grid(not self.canvas_editor.show_grid)
+    def _toggle_grid(self, event=None):
+        # 1. Flip the boolean flag on the canvas editor
+        new_state = not self.canvas_editor.show_grid
+        self.canvas_editor.set_grid(new_state)
         
-        # CRITICAL: Force the canvas to redraw itself immediately so you see the grid
+        # 2. Force the canvas to redraw right now
         self.canvas_editor._refresh_display()
+        
+        if new_state:
+            self._update_status("Grid enabled (Requires Zoom >= 4x to display)")
+        else:
+            self._update_status("Grid disabled")
 
     def _about(self):
         messagebox.showinfo(
