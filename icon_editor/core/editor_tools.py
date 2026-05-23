@@ -70,9 +70,6 @@ def draw_brush_line(image, p0: tuple[int, int], p1: tuple[int, int], color: tupl
             y += sy
 
 def flood_fill(image, seed: tuple[int, int], fill_color: tuple[int, int, int, int], tolerance: int = 0):
-    """
-    Non-recursive flood fill with RGBA tolerance and safety cap.
-    """
     w, h = image.size
     px = image.load()
     x, y = seed
@@ -91,28 +88,16 @@ def flood_fill(image, seed: tuple[int, int], fill_color: tuple[int, int, int, in
             abs(c1[3] - c2[3]) <= tolerance
         )
 
-    MAX_PIXELS = 1_200_000  # safety cap to prevent UI freeze on huge fills
-    count = 0
-
     stack = [seed]
-    visited = set()
-
     while stack:
-        x, y = stack.pop()
-        if (x, y) in visited:
+        cx, cy = stack.pop()
+        if cx < 0 or cy < 0 or cx >= w or cy >= h:
             continue
-        visited.add((x, y))
-
-        if x < 0 or y < 0 or x >= w or y >= h:
-            continue
-
-        if not close_enough(px[x, y], target):
-            continue
-
-        px[x, y] = fill_color
-        count += 1
-        if count >= MAX_PIXELS:
-            # Stop early to keep the UI responsive; user can repeat if needed
+            
+        # Use the pixel data array itself to check state rather than an external tracking set
+        if close_enough(px[cx, cy], target) and px[cx, cy] != fill_color:
+            px[cx, cy] = fill_color
+            stack.extend([(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)])
             break
 
         stack.append((x + 1, y))
