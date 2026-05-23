@@ -10,7 +10,7 @@ from core.image_handler import (
     open_image_dialog,
     save_png_dialog,
 )
-from core.icon_generator import export_ico_dialog
+from core.icon_generator import export_ico_dialog, export_icns_dialog
 from core.editor_tools import ToolType
 from gui.canvas_editor import CanvasEditor
 from utils.helpers import human_readable_size
@@ -253,6 +253,7 @@ class MainWindow(tk.Tk):
         file_menu.add_separator()
         file_menu.add_command(label="Save PNG... (Ctrl+S)", command=self.save_png)
         file_menu.add_command(label="Export ICO... (Ctrl+E)", command=self.export_ico)
+        file_menu.add_command(label="Export ICNS... (macOS)", command=self.export_icns)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self._on_exit)
         menubar.add_cascade(label="File", menu=file_menu)
@@ -636,7 +637,20 @@ class MainWindow(tk.Tk):
             )
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export ICO:\n{e}")
-
+            
+    def export_icns(self):
+        comp = self.canvas_editor.get_composite()
+        if comp is None:
+            messagebox.showinfo("No image", "Create or open an image first.")
+            return
+        try:
+            # Standard macOS icon sizes
+            sizes = [1024, 512, 256, 128, 64, 32, 16]
+            # Ensure export_icns_dialog is imported at the top of main_window.py
+            export_icns_dialog(self, comp, sizes, "Lanczos", True)
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export ICNS:\n{e}")
+            
     # -------------------- Undo/Redo --------------------
     def undo(self):
         self.canvas_editor.undo()
