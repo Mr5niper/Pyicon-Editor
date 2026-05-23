@@ -308,22 +308,19 @@ class CanvasEditor(ttk.Frame):
         self.set_color((r, g, b, self.alpha))
 
     def set_color(self, rgba):
-        # Always clamp and propagate to UI (for color swatch sync)
+        # Force the color tuple to use the current live canvas alpha variable 
+        # instead of letting the color dialog override it with 255
         self.color = (
             clamp(int(rgba[0]), 0, 255),
             clamp(int(rgba[1]), 0, 255),
             clamp(int(rgba[2]), 0, 255),
-            clamp(int(rgba[3]), 0, 255),
+            self.alpha  # <--- Retain your slider's value here
         )
         try:
             self.on_color_ui(self.color)
         except Exception:
             pass
         self.on_status(f"Color: RGBA{self.color}")
-
-    def set_fill_tolerance(self, tol: int):
-        self.fill_tolerance = clamp(int(tol), 0, 255)
-        self.on_status(f"Fill tolerance: {self.fill_tolerance}")
 
     # ---------- Quick Actions ----------
     def quick_invert(self):
