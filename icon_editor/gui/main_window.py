@@ -156,7 +156,7 @@ class IconFactory:
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Pyicon Editor and Creator v1.1.0.0")
+        self.title("Mr5niper's Pyicon Editor and Creator v1.2.0.0")
         # Keep your exact frame size and attach the 20px screen edge offsets
         self.geometry("1560x900+20+20")
         self.minsize(1350, 720)
