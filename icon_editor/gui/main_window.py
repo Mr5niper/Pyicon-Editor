@@ -475,7 +475,9 @@ class MainWindow(tk.Tk):
         color = colorchooser.askcolor(color=f"#{self.current_color[0]:02x}{self.current_color[1]:02x}{self.current_color[2]:02x}")
         if color and color[0]:
             r, g, b = [int(c) for c in color[0]]
-            self.current_color = (r, g, b, self.alpha_var.get())
+            # Read the live slider variable instead of letting it reset
+            current_alpha = self.alpha_var.get()
+            self.current_color = (r, g, b, current_alpha)
             self.color_display.config(bg=f"#{r:02x}{g:02x}{b:02x}")
             self.canvas_editor.set_color(self.current_color)
 
