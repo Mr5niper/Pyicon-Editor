@@ -165,8 +165,11 @@ class CanvasEditor(ttk.Frame):
 
     # ---------- UI ----------
     def _build_ui(self):
+        # Configure row 0 for the canvas (stretches) and row 1 for the scrollbar (fixed size)
         self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=0)
         self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=0)
 
         self.canvas = tk.Canvas(self, bg="#3a3a3a", highlightthickness=0, cursor="cross")
         self.canvas.grid(row=0, column=0, sticky="nsew")
@@ -174,6 +177,8 @@ class CanvasEditor(ttk.Frame):
         self.hbar = ttk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
         self.vbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(xscrollcommand=self.hbar.set, yscrollcommand=self.vbar.set)
+        
+        # Explicit grid targeting to lock them into the viewport structure
         self.hbar.grid(row=1, column=0, sticky="ew")
         self.vbar.grid(row=0, column=1, sticky="ns")
 
