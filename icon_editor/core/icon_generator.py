@@ -106,11 +106,10 @@ def export_icns_dialog(parent, base_image: Image.Image, sizes: list[int], resamp
     frm.pack(fill="both", expand=True)
     ttk.Label(frm, text="Preview of generated sizes:").pack(anchor="w", pady=(0, 8))
 
-    # --- Thumbnail Preview Logic ---
     thumbs = []
     for size in sizes:
         img = prepare_image_for_size(base_image, size, resample, maintain_aspect, pad_to_square=True)
-        # Create small thumbnails for the UI list
+        # Create thumbnail for UI
         thumb = img.resize((min(64, size), min(64, size)), Image.NEAREST)
         tkimg = ImageTk.PhotoImage(thumb)
         
@@ -118,7 +117,7 @@ def export_icns_dialog(parent, base_image: Image.Image, sizes: list[int], resamp
         line.pack(fill="x", pady=2)
         ttk.Label(line, text=f"{size}x{size}").pack(side="left", padx=(0, 8))
         lbl = ttk.Label(line, image=tkimg)
-        lbl.image = tkimg # Keep reference
+        lbl.image = tkimg
         lbl.pack(side="left")
         
         thumbs.append((size, img))
@@ -135,10 +134,10 @@ def export_icns_dialog(parent, base_image: Image.Image, sizes: list[int], resamp
             return
         
         try:
-            # Create the ICNS container
             icns = icnsutil.IcnsFile()
             for sz, im in thumbs:
-                icns.add_data(im, 'PNG', size=sz)
+                # Use add_media instead of add_data
+                icns.add_media(im, size=sz)
             
             icns.write(out_path_str)
             messagebox.showinfo("Exported", f"Successfully saved to:\n{out_path_str}")
