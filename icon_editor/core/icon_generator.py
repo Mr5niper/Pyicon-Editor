@@ -136,8 +136,14 @@ def export_icns_dialog(parent, base_image: Image.Image, sizes: list[int], resamp
         try:
             icns = icnsutil.IcnsFile()
             for sz, im in thumbs:
-                # Use add_media instead of add_data
-                icns.add_media(im, size=sz)
+                # Convert the PIL image to PNG bytes for icnsutil
+                from io import BytesIO
+                buf = BytesIO()
+                im.save(buf, format="PNG")
+                
+                # add_media accepts the raw bytes of the image
+                # icnsutil determines the size from the PNG metadata automatically
+                icns.add_media(buf.getvalue())
             
             icns.write(out_path_str)
             messagebox.showinfo("Exported", f"Successfully saved to:\n{out_path_str}")
