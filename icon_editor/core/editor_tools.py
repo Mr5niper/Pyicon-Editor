@@ -94,13 +94,10 @@ def flood_fill(image, seed: tuple[int, int], fill_color: tuple[int, int, int, in
         if cx < 0 or cy < 0 or cx >= w or cy >= h:
             continue
             
-        # Use the pixel data array itself to check state rather than an external tracking set
+        # 1. Check if the current pixel matches our target color group first
         if close_enough(px[cx, cy], target) and px[cx, cy] != fill_color:
+            # 2. Paint the pixel safely AFTER the verification check passes
             px[cx, cy] = fill_color
+            
+            # 3. Queue up the neighboring coordinates
             stack.extend([(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)])
-            break
-
-        stack.append((x + 1, y))
-        stack.append((x - 1, y))
-        stack.append((x, y + 1))
-        stack.append((x, y - 1))
