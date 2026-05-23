@@ -390,6 +390,22 @@ class CanvasEditor(ttk.Frame):
         self._refresh_display()
         self.on_status("Selection cleared")
 
+    def delete_selection(self):
+        """Fills the currently selected bounding box area with full transparency."""
+        if not self.layers or not self.sel_active or not self.sel_rect:
+            return
+            
+        self._push_state()
+        x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
+        
+        # Draw a transparent rectangle directly onto the active layer
+        draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
+        draw.rectangle([x0, y0, x1 - 1, y1 - 1], fill=(0, 0, 0, 0))
+        
+        self._mark_dirty()
+        self._refresh_display()
+        self.on_status("Selection cleared to transparency")
+
     # ---------- Events ----------
     def _on_space_down(self, event):
         self._space_pan_active = True
