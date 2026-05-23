@@ -55,8 +55,11 @@ def draw_brush_line(image, p0: tuple[int, int], p1: tuple[int, int], color: tupl
     err = dx - dy
     half = brush_size // 2
     def dot(px, py):
-        bbox = (px - half, py - half, px + half, py + half)
-        draw.ellipse(bbox, fill=color)
+        if brush_size <= 1:
+            draw.point((px, py), fill=color)
+        else:
+            bbox = (px - half, py - half, px + half, py + half)
+            draw.ellipse(bbox, fill=color)
     while True:
         dot(x, y)
         if x == x1 and y == y1:
