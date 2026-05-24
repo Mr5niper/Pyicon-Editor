@@ -533,7 +533,20 @@ class MainWindow(tk.Tk):
     def _about(self):
         messagebox.showinfo(
             "About",
-            "Pyicon Editor and Creator v1.1.0.0\n- Multi-resolution ICO export\n- Paint-like compact toolbar\n- Eyedropper color sync\n- PyInstaller-friendly"
+            "Mr5niper's Pyicon Editor and Creator v1.2.1.0\n"
+            "\n"
+            "Created by Mr5niper\n"
+            "© 2026 Mr5niper5oft\n"
+            "MIT License\n"
+            "\n"
+            "Credits:\n"
+            "Python / tkinter, Pillow\n"
+            "\n"
+            "GitHub:\n"
+            "https://github.com/Mr5niper/Pyicon-Editor"
+            "\n"
+            "Release:\n"
+            "https://github.com/Mr5niper/Pyicon-Editor/releases\n"
         )
 
     def _set_theme(self, theme: str):
