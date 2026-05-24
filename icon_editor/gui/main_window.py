@@ -178,6 +178,7 @@ class MainWindow(tk.Tk):
         self.current_tool = ToolType.PENCIL
         self.tool_buttons: dict[tk.Button, ToolType] = {}
         self.current_color = (0, 0, 0, 255)
+        self.shape_fill_var = tk.BooleanVar(value=False)
 
         # Build order
         self._build_menu()
@@ -334,6 +335,18 @@ class MainWindow(tk.Tk):
             btn = add_btn(tools_grp, name, lambda t=tool: self._select_tool(t), tip)
             self.tool_buttons[btn] = tool
         self._update_tool_visuals()
+
+        ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
+
+        # Shape fill
+        shape_grp = ttk.Frame(self.toolbar)
+        shape_grp.pack(side="left", padx=(0, 8))
+        ttk.Checkbutton(
+            shape_grp,
+            text="Filled",
+            variable=self.shape_fill_var,
+            command=self._on_shape_fill_toggle
+        ).pack(side="left")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
 
@@ -499,6 +512,9 @@ class MainWindow(tk.Tk):
 
     def _on_brush_size_change(self, size: int):
         self.canvas_editor.set_brush_size(int(size))
+
+    def _on_shape_fill_toggle(self):
+        self.canvas_editor.set_shape_fill(self.shape_fill_var.get())
 
     # ---------------- Menu actions ----------------
     def _toggle_grid(self, event=None):
