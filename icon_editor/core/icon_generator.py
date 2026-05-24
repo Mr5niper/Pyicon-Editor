@@ -97,6 +97,77 @@ def export_ico_dialog(parent, base_image: Image.Image, sizes: list[int], resampl
     preview.grab_set()
     parent.wait_window(preview)
 
+def save_icns_from_images(images_by_size: list[tuple[int, Image.Image]], out_path: Path):
+    if not images_by_size:
+        raise ValueError("No images to save.")
+
+    # Apple ICNS should be created from the largest square RGBA source.
+    # Pillow will generate the ICNS from that source image.
+    images_sorted = sorted(images_by_size, key=lambda t: t[0])
+    largest_size, largest_img = images_sorted[-1]
+
+    if largest_img.width != largest_img.height:
+        raise ValueError("ICNS source image must be square.")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    largest_img.convert("RGBA").save(str(out_path), format="ICNS")
+    
+def export_icns_dialog(parent, base_image: Image.Image, sizes: list[int], resample: str, maintain_aspect: bool):
+    preview = Toplevel(parent)
+    preview.title("Preview & Export ICNS (macOS)")
+    preview.resizable(False, False)
+
+    frm = ttk.Frame(preview, padding=10)
+    frm.pack(fill="both", expand=True)
+    ttk.Label(frm, text="Preview of generated sizes:").pack(anchor="w", pady=(0, 8))
+
+    thumbs = []
+    thumb_imgs = []
+
+    for size in sizes:
+        img = prepare_image_for_size(base_image, size, resample, maintain_aspect, pad_to_square=True)
+
+        thumb = img.resize((min(64, size), min(64, size)), Image.NEAREST)
+        tkimg = ImageTk.PhotoImage(thumb)
+
+        line = ttk.Frame(frm)
+        line.pack(fill="x", pady=2)
+
+        ttk.Label(line, text=f"{size}x{size}").pack(side="left", padx=(0, 8))
+        lbl = ttk.Label(line, image=tkimg)
+        lbl.image = tkimg
+        lbl.pack(side="left")
+
+        thumbs.append((size, img))
+        thumb_imgs.append(tkimg)
+
+    def do_export():
+        out_path_str = filedialog.asksaveasfilename(
+            parent=parent,
+            title="Export ICNS",
+            defaultextension=".icns",
+            filetypes=[("Apple Icon", "*.icns")],
+            initialfile="icon.icns",
+        )
+        if not out_path_str:
+            return
+
+        out_path = Path(out_path_str)
+
+        try:
+            save_icns_from_images(thumbs, out_path)
+            messagebox.showinfo("Exported", f"Successfully saved to:\n{out_path}")
+            preview.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export ICNS:\n{e}")
+
+    btns = ttk.Frame(frm)
+    btns.pack(fill="x", pady=(10, 0))
+    ttk.Button(btns, text="Export ICNS", command=do_export).pack(side="left")
+    ttk.Button(btns, text="Cancel", command=preview.destroy).pack(side="left", padx=(8, 0))
+
+    preview.grab_set()
+    parent.wait_window(preview)
 
 def pil_to_png_bytes(im: Image.Image) -> bytes:
     from io import BytesIO

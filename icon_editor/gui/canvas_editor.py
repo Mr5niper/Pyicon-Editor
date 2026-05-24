@@ -26,6 +26,8 @@ class CanvasEditor(ttk.Frame):
         self.on_layers_changed = on_layers_changed or (lambda: None)
         self.on_color_ui = on_color_ui or (lambda rgba: None)
 
+        self._bg_cache = None
+
         # Layers are created by new_blank/load_image
         self.layers: list[Image.Image] = []
         self.layer_visible: list[bool] = []
@@ -163,8 +165,11 @@ class CanvasEditor(ttk.Frame):
 
     # ---------- UI ----------
     def _build_ui(self):
+        # Configure row 0 for the canvas (stretches) and row 1 for the scrollbar (fixed size)
         self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=0)
         self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=0)
 
         self.canvas = tk.Canvas(self, bg="#3a3a3a", highlightthickness=0, cursor="cross")
         self.canvas.grid(row=0, column=0, sticky="nsew")
@@ -172,6 +177,8 @@ class CanvasEditor(ttk.Frame):
         self.hbar = ttk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
         self.vbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(xscrollcommand=self.hbar.set, yscrollcommand=self.vbar.set)
+        
+        # Explicit grid targeting to lock them into the viewport structure
         self.hbar.grid(row=1, column=0, sticky="ew")
         self.vbar.grid(row=0, column=1, sticky="ns")
 
@@ -306,22 +313,19 @@ class CanvasEditor(ttk.Frame):
         self.set_color((r, g, b, self.alpha))
 
     def set_color(self, rgba):
-        # Always clamp and propagate to UI (for color swatch sync)
+        # Force the color tuple to use the current live canvas alpha variable 
+        # instead of letting the color dialog override it with 255
         self.color = (
             clamp(int(rgba[0]), 0, 255),
             clamp(int(rgba[1]), 0, 255),
             clamp(int(rgba[2]), 0, 255),
-            clamp(int(rgba[3]), 0, 255),
+            self.alpha  # <--- Retain your slider's value here
         )
         try:
             self.on_color_ui(self.color)
         except Exception:
             pass
         self.on_status(f"Color: RGBA{self.color}")
-
-    def set_fill_tolerance(self, tol: int):
-        self.fill_tolerance = clamp(int(tol), 0, 255)
-        self.on_status(f"Fill tolerance: {self.fill_tolerance}")
 
     # ---------- Quick Actions ----------
     def quick_invert(self):
@@ -391,6 +395,24 @@ class CanvasEditor(ttk.Frame):
         self._refresh_display()
         self.on_status("Selection cleared")
 
+    def delete_selection(self):
+        """Fills the currently selected bounding box area with full transparency."""
+        if not self.layers or not self.sel_active or not self.sel_rect:
+            return
+            
+        self._push_state()
+        x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
+        
+        # Draw a transparent rectangle. 
+        # By using x1 and y1 directly (exclusive boundary), 
+        # Pillow will cover the range from x0 to x1-1 (which includes the last pixel).
+        draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
+        draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0, 0))
+        
+        self._mark_dirty()
+        self._refresh_display()
+        self.on_status("Selection cleared to transparency")
+
     # ---------- Events ----------
     def _on_space_down(self, event):
         self._space_pan_active = True
@@ -449,28 +471,32 @@ class CanvasEditor(ttk.Frame):
             comp = self._get_composite_with_preview() or self.get_composite()
             if comp:
                 try:
-                    r, g, b, a = comp.getpixel((ix, iy))
-                    # Use set_color so UI callback runs
+                    # Explicitly lock the coordinates to target pixel integers
+                    cx = max(0, min(int(ix), comp.width - 1))
+                    cy = max(0, min(int(iy), comp.height - 1))
+                    r, g, b, a = comp.getpixel((cx, cy))
                     self.set_color((r, g, b, a))
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Eyedropper sample failed: {e}")
         elif self.tool == ToolType.FILL:
             flood_fill(self.layers[self.active_layer], (ix, iy), self.color, tolerance=self.fill_tolerance)
         elif self.tool == ToolType.MAGIC_ERASER:
             r, g, b, a = self.layers[self.active_layer].getpixel((ix, iy))
             flood_fill(self.layers[self.active_layer], (ix, iy), (r, g, b, 0), tolerance=self.fill_tolerance)
         elif self.tool == ToolType.SELECTION:
+            # Deselect if clicking on a new area without dragging
             self.sel_active = True
             self.sel_start = (ix, iy)
-            self.sel_rect = (ix, iy, ix, iy)
+            self.sel_rect = None  # Don't create a 1x1 box yet; wait for drag
         elif self.tool == ToolType.MOVE:
             if self.sel_floating is None and self.sel_rect and self._point_in_rect((ix, iy), self.sel_rect):
                 x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
                 box = (x0, y0, x1, y1)
                 self.sel_floating = self.layers[self.active_layer].crop(box)
-                draw = ImageDraw.Draw(self.layers[self.active_layer])
+                draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
                 draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0, 0))
                 self.sel_offset = (x0, y0)
+                self.sel_rect = (x0, y0, x1, y1)
         elif self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE):
             self.shape_start = (ix, iy)
             self.preview_image = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
@@ -502,13 +528,21 @@ class CanvasEditor(ttk.Frame):
             draw_brush_line(self.layers[self.active_layer], self.last_pos, (ix, iy), self.color, self.brush_size)
         elif self.tool == ToolType.ERASER:
             draw_brush_line(self.layers[self.active_layer], self.last_pos, (ix, iy), (0, 0, 0, 0), self.brush_size)
-        elif self.tool == ToolType.SELECTION and self.sel_active and self.sel_start:
-            x0, y0 = self.sel_start
-            self.sel_rect = (x0, y0, ix, iy)
+        elif self.tool == ToolType.SELECTION and self.sel_active:
+            # Only start the rectangle once the mouse has moved from the start point
+            if self.sel_start:
+                x0, y0 = self.sel_start
+                self.sel_rect = (x0, y0, ix, iy)
         elif self.tool == ToolType.MOVE and self.sel_floating is not None:
             dx = ix - self.last_pos[0]
             dy = iy - self.last_pos[1]
             self.sel_offset = (self.sel_offset[0] + dx, self.sel_offset[1] + dy)
+
+            # Keep the visible selection box aligned with the floating selection
+            x0, y0 = self.sel_offset
+            x1 = x0 + self.sel_floating.width
+            y1 = y0 + self.sel_floating.height
+            self.sel_rect = (x0, y0, x1, y1)
         elif self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE) and self.shape_start:
             self._update_shape_preview(self.shape_start, (ix, iy))
 
@@ -519,6 +553,11 @@ class CanvasEditor(ttk.Frame):
     def _on_mouse_up(self, event):
         if not self.layers:
             return
+        
+        # If we clicked but never dragged (sel_rect is still None), clear selection
+        if self.tool == ToolType.SELECTION and self.sel_active and self.sel_rect is None:
+            self.clear_selection()
+            
         if self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE) and self.shape_start:
             self._commit_shape(self.shape_start, self.last_pos)
             self.shape_start = None
@@ -554,18 +593,32 @@ class CanvasEditor(ttk.Frame):
     def _draw_point(self, x, y, color):
         if not (0 <= x < self.width() and 0 <= y < self.height()):
             return
-        half = self.brush_size // 2
-        bbox = (x - half, y - half, x + half, y + half)
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
-        draw.ellipse([bbox[0], bbox[1], bbox[2], bbox[3]], fill=color)
+        half = self.brush_size // 2
+        
+        if self.brush_size <= 1:
+            draw.point((x, y), fill=color)
+        else:
+            # Strict integer pixel bounding box configuration
+            bbox = [x - half, y - half, x + half, y + half]
+            draw.ellipse(bbox, fill=color)
 
     def _draw_text(self, x, y, text, size_px):
         self._push_state()
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
-        try:
-            font = ImageFont.truetype("DejaVuSans.ttf", size_px)
-        except Exception:
+        
+        font = None
+        # Check common cross-platform font fallbacks
+        for font_name in ["arial.ttf", "calibri.ttf", "Helvetica.ttf", "DejaVuSans.ttf"]:
+            try:
+                font = ImageFont.truetype(font_name, size_px)
+                break
+            except IOError:
+                continue
+                
+        if font is None:
             font = ImageFont.load_default()
+            
         draw.text((x, y), text, fill=self.color, font=font)
         self._mark_dirty()
         self._refresh_display()
@@ -598,10 +651,13 @@ class CanvasEditor(ttk.Frame):
     def _update_shape_preview(self, start, end):
         self.preview_image = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
         draw = ImageDraw.Draw(self.preview_image, "RGBA")
-        x0, y0 = start
-        x1, y1 = end
+        
+        # Normalize the coordinates instantly to allow multi-directional drawing
+        x0, y0, x1, y1 = self._norm_rect((start[0], start[1], end[0], end[1]))
+        
         if self.tool == ToolType.SHAPE_LINE:
-            draw.line([x0, y0, x1, y1], fill=self.color, width=self.brush_size)
+            # Lines don't require sorting, use original track points
+            draw.line([start[0], start[1], end[0], end[1]], fill=self.color, width=self.brush_size)
         elif self.tool == ToolType.SHAPE_RECT:
             draw.rectangle([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
         elif self.tool == ToolType.SHAPE_ELLIPSE:
@@ -609,10 +665,12 @@ class CanvasEditor(ttk.Frame):
 
     def _commit_shape(self, start, end):
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
-        x0, y0 = start
-        x1, y1 = end
+        
+        # Normalize coordinates before final commitment to the layer
+        x0, y0, x1, y1 = self._norm_rect((start[0], start[1], end[0], end[1]))
+        
         if self.tool == ToolType.SHAPE_LINE:
-            draw.line([x0, y0, x1, y1], fill=self.color, width=self.brush_size)
+            draw.line([start[0], start[1], end[0], end[1]], fill=self.color, width=self.brush_size)
             self.on_status("Line drawn")
         elif self.tool == ToolType.SHAPE_RECT:
             draw.rectangle([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
@@ -685,16 +743,38 @@ class CanvasEditor(ttk.Frame):
         comp = self._get_composite_with_preview()
         if comp is None:
             return None
-        if self.sel_active and self.sel_rect:
-            x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
-            overlay = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
-            d = ImageDraw.Draw(overlay)
-            d.rectangle([x0, y0, x1, y1], outline=(0, 200, 255, 255), width=1)
-            comp.alpha_composite(overlay)
-        bg = create_checkerboard((comp.width, comp.height), square_size=8)
-        composed = Image.alpha_composite(bg.convert("RGBA"), comp)
+
+        # 1. Handle or initialize the background checkerboard cache
+        if self._bg_cache is None or self._bg_cache.size != comp.size:
+            self._bg_cache = create_checkerboard((comp.width, comp.height), square_size=8).convert("RGBA")
+            
+        composed = Image.alpha_composite(self._bg_cache, comp)
+        
+        # 2. Scale the canvas layer via Nearest Neighbor
         if self.zoom != 1:
             composed = composed.resize((comp.width * self.zoom, comp.height * self.zoom), Image.NEAREST)
+            
+        # 3. Apply the Selection Marquee on top of the scaled output
+        if self.sel_active:
+            draw = ImageDraw.Draw(composed)
+
+            if self.sel_floating is not None:
+                x0, y0 = self.sel_offset
+                x1 = x0 + self.sel_floating.width
+                y1 = y0 + self.sel_floating.height
+            elif self.sel_rect:
+                x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
+            else:
+                x0 = y0 = x1 = y1 = None
+
+            if x0 is not None:
+                draw.rectangle(
+                    [x0 * self.zoom, y0 * self.zoom, (x1 + 1) * self.zoom, (y1 + 1) * self.zoom],
+                    outline=(0, 200, 255, 255),
+                    width=1
+                )
+
+        # 4. Lay down the guide grid lines safely
         if self.show_grid and self.zoom >= 4:
             draw = ImageDraw.Draw(composed)
             w, h = composed.size
@@ -702,6 +782,7 @@ class CanvasEditor(ttk.Frame):
                 draw.line([(x, 0), (x, h)], fill=(0, 0, 0, 40))
             for y in range(0, h, self.zoom):
                 draw.line([(0, y), (w, y)], fill=(0, 0, 0, 40))
+                
         return composed
 
     def _refresh_display(self):

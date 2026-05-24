@@ -10,7 +10,7 @@ from core.image_handler import (
     open_image_dialog,
     save_png_dialog,
 )
-from core.icon_generator import export_ico_dialog
+from core.icon_generator import export_ico_dialog, export_icns_dialog
 from core.editor_tools import ToolType
 from gui.canvas_editor import CanvasEditor
 from utils.helpers import human_readable_size
@@ -156,9 +156,10 @@ class IconFactory:
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Pyicon Editor and Creator v1.1.0.0")
-        self.geometry("1400x900")
-        self.minsize(1100, 720)
+        self.title("Mr5niper's Pyicon Editor and Creator v1.2.0.0")
+        # Keep your exact frame size and attach the 20px screen edge offsets
+        self.geometry("1560x900+20+20")
+        self.minsize(1350, 720)
         
         self._set_app_icon() 
 
@@ -252,6 +253,7 @@ class MainWindow(tk.Tk):
         file_menu.add_separator()
         file_menu.add_command(label="Save PNG... (Ctrl+S)", command=self.save_png)
         file_menu.add_command(label="Export ICO... (Ctrl+E)", command=self.export_ico)
+        file_menu.add_command(label="Export ICNS... (macOS)", command=self.export_icns)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self._on_exit)
         menubar.add_cascade(label="File", menu=file_menu)
@@ -338,12 +340,14 @@ class MainWindow(tk.Tk):
         # Brush size
         size_grp = ttk.Frame(self.toolbar)
         size_grp.pack(side="left", padx=(0, 8))
+        # Brush size slider
         ttk.Label(size_grp, text="Size").pack(side="left", padx=(0, 4))
         self.brush_size_var = tk.IntVar(value=5)
         size_scale = ttk.Scale(size_grp, from_=1, to=64, orient="horizontal",
                                command=lambda v: self._on_brush_size_change(int(float(v))))
         size_scale.set(5)
-        size_scale.pack(side="left", ipadx=40)
+        # Drop ipadx and allow natural layout expansion
+        size_scale.pack(side="left", fill="x", expand=True, padx=2)
         Tooltip(size_scale, "Brush Size")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
@@ -358,17 +362,19 @@ class MainWindow(tk.Tk):
         Tooltip(self.color_display, "Pick Color")
         ttk.Label(color_grp, text="Alpha").pack(side="left", padx=(10, 4))
         self.alpha_var = tk.IntVar(value=255)
+        # Alpha slider
         alpha_scale = ttk.Scale(color_grp, from_=0, to=255, orient="horizontal",
                                 command=lambda v: self._on_alpha_change(int(float(v))))
         alpha_scale.set(255)
-        alpha_scale.pack(side="left", ipadx=30)
+        alpha_scale.pack(side="left", fill="x", expand=True, padx=2)
         Tooltip(alpha_scale, "Alpha (opacity 0–255)")
         ttk.Label(color_grp, text="Tol").pack(side="left", padx=(10, 4))
         self.tol_var = tk.IntVar(value=0)
+        # Tolerance slider
         tol_scale = ttk.Scale(color_grp, from_=0, to=100, orient="horizontal",
                               command=lambda v: self.canvas_editor.set_fill_tolerance(int(float(v))))
         tol_scale.set(0)
-        tol_scale.pack(side="left", ipadx=30)
+        tol_scale.pack(side="left", fill="x", expand=True, padx=2)
         Tooltip(tol_scale, "Fill Tolerance")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
@@ -475,8 +481,14 @@ class MainWindow(tk.Tk):
         color = colorchooser.askcolor(color=f"#{self.current_color[0]:02x}{self.current_color[1]:02x}{self.current_color[2]:02x}")
         if color and color[0]:
             r, g, b = [int(c) for c in color[0]]
-            self.current_color = (r, g, b, self.alpha_var.get())
+            
+            # CRITICAL: Read the actual position of the alpha slider right now
+            current_alpha = int(self.alpha_var.get())
+            
+            self.current_color = (r, g, b, current_alpha)
             self.color_display.config(bg=f"#{r:02x}{g:02x}{b:02x}")
+            
+            # Pass the color with the slider's alpha retained
             self.canvas_editor.set_color(self.current_color)
 
     def _on_alpha_change(self, alpha: int):
@@ -489,10 +501,18 @@ class MainWindow(tk.Tk):
         self.canvas_editor.set_brush_size(int(size))
 
     # ---------------- Menu actions ----------------
-    def _toggle_grid(self):
-        # Toggle internal state based on current label text
-        # Better: keep a BooleanVar if you want live check; here we just toggle canvas flag.
-        self.canvas_editor.set_grid(not self.canvas_editor.show_grid)
+    def _toggle_grid(self, event=None):
+        # 1. Flip the boolean flag on the canvas editor
+        new_state = not self.canvas_editor.show_grid
+        self.canvas_editor.set_grid(new_state)
+        
+        # 2. Force the canvas to redraw right now
+        self.canvas_editor._refresh_display()
+        
+        if new_state:
+            self._update_status("Grid enabled (Requires Zoom >= 4x to display)")
+        else:
+            self._update_status("Grid disabled")
 
     def _about(self):
         messagebox.showinfo(
@@ -617,7 +637,20 @@ class MainWindow(tk.Tk):
             )
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export ICO:\n{e}")
-
+            
+    def export_icns(self):
+        comp = self.canvas_editor.get_composite()
+        if comp is None:
+            messagebox.showinfo("No image", "Create or open an image first.")
+            return
+        try:
+            # Standard macOS icon sizes
+            sizes = [1024, 512, 256, 128, 64, 32, 16]
+            # Ensure export_icns_dialog is imported at the top of main_window.py
+            export_icns_dialog(self, comp, sizes, "Lanczos", True)
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export ICNS:\n{e}")
+            
     # -------------------- Undo/Redo --------------------
     def undo(self):
         self.canvas_editor.undo()
@@ -674,6 +707,7 @@ class MainWindow(tk.Tk):
         self.bind("<Control-z>", lambda event: self.undo())
         self.bind("<Control-y>", lambda event: self.redo())
         self.bind("<Escape>", lambda event: self._deselect())
+        self.bind("<Delete>", lambda event: self.canvas_editor.delete_selection())
         
         # View operations
         self.bind("<f>", lambda event: self._fit_to_window())

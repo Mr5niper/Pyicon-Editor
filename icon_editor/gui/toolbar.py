@@ -87,7 +87,10 @@ class ToolBar(ttk.Frame):
         if color is None or color[0] is None:
             return
         r, g, b = [int(c) for c in color[0]]
-        a = self.alpha_var.get()
+        
+        # CRITICAL: Pull the live position from the toolbar's alpha slider variable
+        a = int(self.alpha_var.get())
+        
         self.current_color = (r, g, b, a)
         self._update_color_preview()
         self.on_color_change(self.current_color)

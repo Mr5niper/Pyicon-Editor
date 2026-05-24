@@ -55,8 +55,11 @@ def draw_brush_line(image, p0: tuple[int, int], p1: tuple[int, int], color: tupl
     err = dx - dy
     half = brush_size // 2
     def dot(px, py):
-        bbox = (px - half, py - half, px + half, py + half)
-        draw.ellipse(bbox, fill=color)
+        if brush_size <= 1:
+            draw.point((px, py), fill=color)
+        else:
+            bbox = (px - half, py - half, px + half, py + half)
+            draw.ellipse(bbox, fill=color)
     while True:
         dot(x, y)
         if x == x1 and y == y1:
@@ -70,9 +73,6 @@ def draw_brush_line(image, p0: tuple[int, int], p1: tuple[int, int], color: tupl
             y += sy
 
 def flood_fill(image, seed: tuple[int, int], fill_color: tuple[int, int, int, int], tolerance: int = 0):
-    """
-    Non-recursive flood fill with RGBA tolerance and safety cap.
-    """
     w, h = image.size
     px = image.load()
     x, y = seed
@@ -91,31 +91,16 @@ def flood_fill(image, seed: tuple[int, int], fill_color: tuple[int, int, int, in
             abs(c1[3] - c2[3]) <= tolerance
         )
 
-    MAX_PIXELS = 1_200_000  # safety cap to prevent UI freeze on huge fills
-    count = 0
-
     stack = [seed]
-    visited = set()
-
     while stack:
-        x, y = stack.pop()
-        if (x, y) in visited:
+        cx, cy = stack.pop()
+        if cx < 0 or cy < 0 or cx >= w or cy >= h:
             continue
-        visited.add((x, y))
-
-        if x < 0 or y < 0 or x >= w or y >= h:
-            continue
-
-        if not close_enough(px[x, y], target):
-            continue
-
-        px[x, y] = fill_color
-        count += 1
-        if count >= MAX_PIXELS:
-            # Stop early to keep the UI responsive; user can repeat if needed
-            break
-
-        stack.append((x + 1, y))
-        stack.append((x - 1, y))
-        stack.append((x, y + 1))
-        stack.append((x, y - 1))
+            
+        # 1. Check if the current pixel matches our target color group first
+        if close_enough(px[cx, cy], target) and px[cx, cy] != fill_color:
+            # 2. Paint the pixel safely AFTER the verification check passes
+            px[cx, cy] = fill_color
+            
+            # 3. Queue up the neighboring coordinates
+            stack.extend([(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)])
