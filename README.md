@@ -34,10 +34,11 @@ Select a tool to interact with the main canvas. The active tool button appears d
 - **Text (T)**: Click on the canvas, enter text, and stamp it using a chosen font size
 - **Shapes**:
   - **Line (L)**
-  - **Rectangle (R)**
-  - **Ellipse (C)**
+  - **Rectangle (R)** — supports outline or filled mode
+  - **Ellipse (C)** — supports outline or filled mode
 
 ### 3. Tool Settings & Sliders
+- **Filled**: Toggle filled mode for Rectangle and Ellipse tools
 - **Size**: Adjust stroke width for Brush, Eraser, and Shape tools
 - **Color Box**: Open the system color picker
 - **Alpha**: Set opacity from `0–255`
