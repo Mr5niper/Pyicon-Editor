@@ -12,7 +12,7 @@ A full-featured, cross-platform icon creator and editor written in Python. Creat
    The application features a streamlined, single-row ribbon toolbar at the top of the window, divided into logical groups from left to right.
 <br>
 <br>
-<img width="1562" height="964" alt="image" src="https://github.com/user-attachments/assets/1d6a34fb-f635-43a1-8063-a9e876581415" />
+<img width="1562" height="964" alt="image" src="https://github.com/user-attachments/assets/a7d6028f-9776-4e71-8c0c-e068bab48662" />
 <br>
 <br>
 ### 1. File Operations
