@@ -493,9 +493,10 @@ class CanvasEditor(ttk.Frame):
                 x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
                 box = (x0, y0, x1, y1)
                 self.sel_floating = self.layers[self.active_layer].crop(box)
-                draw = ImageDraw.Draw(self.layers[self.active_layer])
+                draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
                 draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0, 0))
                 self.sel_offset = (x0, y0)
+                self.sel_rect = (x0, y0, x1, y1)
         elif self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE):
             self.shape_start = (ix, iy)
             self.preview_image = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
@@ -536,6 +537,12 @@ class CanvasEditor(ttk.Frame):
             dx = ix - self.last_pos[0]
             dy = iy - self.last_pos[1]
             self.sel_offset = (self.sel_offset[0] + dx, self.sel_offset[1] + dy)
+
+            # Keep the visible selection box aligned with the floating selection
+            x0, y0 = self.sel_offset
+            x1 = x0 + self.sel_floating.width
+            y1 = y0 + self.sel_floating.height
+            self.sel_rect = (x0, y0, x1, y1)
         elif self.tool in (ToolType.SHAPE_LINE, ToolType.SHAPE_RECT, ToolType.SHAPE_ELLIPSE) and self.shape_start:
             self._update_shape_preview(self.shape_start, (ix, iy))
 
@@ -748,15 +755,24 @@ class CanvasEditor(ttk.Frame):
             composed = composed.resize((comp.width * self.zoom, comp.height * self.zoom), Image.NEAREST)
             
         # 3. Apply the Selection Marquee on top of the scaled output
-        if self.sel_active and self.sel_rect:
-            x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
+        if self.sel_active:
             draw = ImageDraw.Draw(composed)
-            # Add +1 to the right and bottom coordinates to include the last pixel
-            draw.rectangle(
-                [x0 * self.zoom, y0 * self.zoom, (x1 + 1) * self.zoom, (y1 + 1) * self.zoom], 
-                outline=(0, 200, 255, 255), 
-                width=1
-            )
+
+            if self.sel_floating is not None:
+                x0, y0 = self.sel_offset
+                x1 = x0 + self.sel_floating.width
+                y1 = y0 + self.sel_floating.height
+            elif self.sel_rect:
+                x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
+            else:
+                x0 = y0 = x1 = y1 = None
+
+            if x0 is not None:
+                draw.rectangle(
+                    [x0 * self.zoom, y0 * self.zoom, (x1 + 1) * self.zoom, (y1 + 1) * self.zoom],
+                    outline=(0, 200, 255, 255),
+                    width=1
+                )
 
         # 4. Lay down the guide grid lines safely
         if self.show_grid and self.zoom >= 4:
