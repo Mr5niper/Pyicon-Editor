@@ -156,7 +156,7 @@ class IconFactory:
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Mr5niper's Pyicon Editor and Creator v1.2.0.0")
+        self.title("Mr5niper's Pyicon Editor and Creator v1.2.1.0")
         # Keep your exact frame size and attach the 20px screen edge offsets
         self.geometry("1560x900+20+20")
         self.minsize(1350, 720)
@@ -178,6 +178,7 @@ class MainWindow(tk.Tk):
         self.current_tool = ToolType.PENCIL
         self.tool_buttons: dict[tk.Button, ToolType] = {}
         self.current_color = (0, 0, 0, 255)
+        self.shape_fill_var = tk.BooleanVar(value=False)
 
         # Build order
         self._build_menu()
@@ -334,6 +335,18 @@ class MainWindow(tk.Tk):
             btn = add_btn(tools_grp, name, lambda t=tool: self._select_tool(t), tip)
             self.tool_buttons[btn] = tool
         self._update_tool_visuals()
+
+        ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
+
+        # Shape fill
+        shape_grp = ttk.Frame(self.toolbar)
+        shape_grp.pack(side="left", padx=(0, 8))
+        ttk.Checkbutton(
+            shape_grp,
+            text="Filled",
+            variable=self.shape_fill_var,
+            command=self._on_shape_fill_toggle
+        ).pack(side="left")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
 
@@ -500,6 +513,9 @@ class MainWindow(tk.Tk):
     def _on_brush_size_change(self, size: int):
         self.canvas_editor.set_brush_size(int(size))
 
+    def _on_shape_fill_toggle(self):
+        self.canvas_editor.set_shape_fill(self.shape_fill_var.get())
+
     # ---------------- Menu actions ----------------
     def _toggle_grid(self, event=None):
         # 1. Flip the boolean flag on the canvas editor
@@ -517,7 +533,20 @@ class MainWindow(tk.Tk):
     def _about(self):
         messagebox.showinfo(
             "About",
-            "Pyicon Editor and Creator v1.1.0.0\n- Multi-resolution ICO export\n- Paint-like compact toolbar\n- Eyedropper color sync\n- PyInstaller-friendly"
+            "Mr5niper's Pyicon Editor and Creator v1.2.1.0\n"
+            "\n"
+            "Created by Mr5niper\n"
+            "© 2026 Mr5niper5oft\n"
+            "MIT License\n"
+            "\n"
+            "Credits:\n"
+            "Python / tkinter, Pillow\n"
+            "\n"
+            "GitHub:\n"
+            "https://github.com/Mr5niper/Pyicon-Editor"
+            "\n"
+            "Release:\n"
+            "https://github.com/Mr5niper/Pyicon-Editor/releases\n"
         )
 
     def _set_theme(self, theme: str):

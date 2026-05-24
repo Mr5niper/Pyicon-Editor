@@ -48,6 +48,7 @@ class CanvasEditor(ttk.Frame):
         self.color = (0, 0, 0, 255)
         self.alpha = 255
         self.fill_tolerance = 0
+        self.shape_fill = False
 
         # Selection / move
         self.sel_active = False
@@ -326,6 +327,10 @@ class CanvasEditor(ttk.Frame):
         except Exception:
             pass
         self.on_status(f"Color: RGBA{self.color}")
+
+    def set_shape_fill(self, filled: bool):
+        self.shape_fill = bool(filled)
+        self.on_status(f"Shape fill: {'On' if self.shape_fill else 'Off'}")
 
     # ---------- Quick Actions ----------
     def quick_invert(self):
@@ -651,33 +656,47 @@ class CanvasEditor(ttk.Frame):
     def _update_shape_preview(self, start, end):
         self.preview_image = Image.new("RGBA", (self.width(), self.height()), (0, 0, 0, 0))
         draw = ImageDraw.Draw(self.preview_image, "RGBA")
-        
+
         # Normalize the coordinates instantly to allow multi-directional drawing
         x0, y0, x1, y1 = self._norm_rect((start[0], start[1], end[0], end[1]))
-        
+
         if self.tool == ToolType.SHAPE_LINE:
             # Lines don't require sorting, use original track points
             draw.line([start[0], start[1], end[0], end[1]], fill=self.color, width=self.brush_size)
         elif self.tool == ToolType.SHAPE_RECT:
-            draw.rectangle([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
+            if self.shape_fill:
+                draw.rectangle([x0, y0, x1, y1], fill=self.color, outline=self.color, width=self.brush_size)
+            else:
+                draw.rectangle([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
         elif self.tool == ToolType.SHAPE_ELLIPSE:
-            draw.ellipse([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
+            if self.shape_fill:
+                draw.ellipse([x0, y0, x1, y1], fill=self.color, outline=self.color, width=self.brush_size)
+            else:
+                draw.ellipse([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
 
     def _commit_shape(self, start, end):
         draw = ImageDraw.Draw(self.layers[self.active_layer], "RGBA")
-        
+
         # Normalize coordinates before final commitment to the layer
         x0, y0, x1, y1 = self._norm_rect((start[0], start[1], end[0], end[1]))
-        
+
         if self.tool == ToolType.SHAPE_LINE:
             draw.line([start[0], start[1], end[0], end[1]], fill=self.color, width=self.brush_size)
             self.on_status("Line drawn")
         elif self.tool == ToolType.SHAPE_RECT:
-            draw.rectangle([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
-            self.on_status("Rectangle drawn")
+            if self.shape_fill:
+                draw.rectangle([x0, y0, x1, y1], fill=self.color, outline=self.color, width=self.brush_size)
+                self.on_status("Filled rectangle drawn")
+            else:
+                draw.rectangle([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
+                self.on_status("Rectangle drawn")
         elif self.tool == ToolType.SHAPE_ELLIPSE:
-            draw.ellipse([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
-            self.on_status("Ellipse drawn")
+            if self.shape_fill:
+                draw.ellipse([x0, y0, x1, y1], fill=self.color, outline=self.color, width=self.brush_size)
+                self.on_status("Filled ellipse drawn")
+            else:
+                draw.ellipse([x0, y0, x1, y1], outline=self.color, width=self.brush_size)
+                self.on_status("Ellipse drawn")
         self._mark_dirty()
 
     # ---------- Undo / Redo ----------
