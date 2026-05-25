@@ -1,7 +1,7 @@
 import sys
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, colorchooser
 from pathlib import Path
 
 from core.image_handler import (
@@ -34,14 +34,18 @@ class Tooltip:
         widget.bind("<Enter>", self._on_enter, add="+")
         widget.bind("<Leave>", self._on_leave, add="+")
         widget.bind("<ButtonPress>", self._on_leave, add="+")
+
     def _on_enter(self, _):
         self._schedule()
+
     def _on_leave(self, _):
         self._cancel()
         self._hide()
+
     def _schedule(self):
         self._cancel()
         self._after = self.widget.after(self.delay, self._show)
+
     def _cancel(self):
         if self._after:
             try:
@@ -49,17 +53,37 @@ class Tooltip:
             except Exception:
                 pass
             self._after = None
+
     def _show(self):
         if self._tip:
             return
-        x, y, cx, cy = self.widget.bbox("insert") if self.widget.winfo_viewable() else (0, 0, 0, 0)
-        x += self.widget.winfo_rootx() + 20
-        y += self.widget.winfo_rooty() + 20
+
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + 20
+
         self._tip = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{x}+{y}")
-        lbl = ttk.Label(tw, text=self.text, relief="solid", padding=(6, 3), borderwidth=1)
+
+        bg = getattr(self.widget.winfo_toplevel(), "_tooltip_bg", "#3a3d41")
+        fg = getattr(self.widget.winfo_toplevel(), "_tooltip_fg", "#f1f1f1")
+        bd = getattr(self.widget.winfo_toplevel(), "_tooltip_bd", "#5a5f66")
+
+        lbl = tk.Label(
+            tw,
+            text=self.text,
+            bg=bg,
+            fg=fg,
+            bd=1,
+            relief="solid",
+            padx=6,
+            pady=3,
+            highlightthickness=1,
+            highlightbackground=bd,
+            highlightcolor=bd
+        )
         lbl.pack()
+
     def _hide(self):
         if self._tip:
             try:
@@ -70,84 +94,122 @@ class Tooltip:
 
 
 class IconFactory:
-    def __init__(self, size=22):
+    def __init__(self, size=22, fg=(0, 0, 0, 255)):
         self.size = size
+        self.fg = fg
         self.cache = {}
+
     def _img(self):
         return Image.new("RGBA", (self.size, self.size), (0, 0, 0, 0))
+
     def _photo(self, im):
         return ImageTk.PhotoImage(im)
+
     def _key(self, name):
-        return f"{name}:{self.size}"
+        return f"{name}:{self.size}:{self.fg}"
+
     def get(self, name):
         if Image is None:
-            # Fallback: no PIL
             return None
+
         k = self._key(name)
         if k in self.cache:
             return self.cache[k]
-        draw = None
+
         im = self._img()
         d = ImageDraw.Draw(im)
         s = self.size
-        c = (30, 30, 30, 255)
-        a = (0, 0, 0, 0)
+
+        fg = self.fg
+        blue = (40, 130, 255, 255)
+        gray_dark = (120, 120, 120, 255)
+        gray_mid = (160, 160, 160, 255)
+        gray_light = (200, 200, 200, 255)
+        gray_lighter = (220, 220, 220, 255)
+        cyan = (0, 150, 255, 255)
+        gold = (255, 200, 0, 255)
+        fill_blue = (0, 120, 220, 255)
+        brush_tip = (50, 50, 50, 255)
+        eraser_fill = (230, 230, 230, 255)
+
         if name == "select":
-            d.rectangle([3, 3, s - 4, s - 4], outline=(40, 130, 255, 255), width=2)
-            d.line([(3, 7), (s - 4, 7)], fill=(40, 130, 255, 255))
-            d.line([(7, 3), (7, s - 4)], fill=(40, 130, 255, 255))
+            d.rectangle([3, 3, s - 4, s - 4], outline=blue, width=2)
+            d.line([(3, 7), (s - 4, 7)], fill=blue)
+            d.line([(7, 3), (7, s - 4)], fill=blue)
+
         elif name == "move":
-            d.polygon([(s//2, 3), (s//2-3, 8), (s//2+3, 8)], fill=(0, 0, 0))
-            d.polygon([(s//2, s-3), (s//2-3, s-8), (s//2+3, s-8)], fill=(0, 0, 0))
-            d.polygon([(3, s//2), (8, s//2-3), (8, s//2+3)], fill=(0, 0, 0))
-            d.polygon([(s-3, s//2), (s-8, s//2-3), (s-8, s//2+3)], fill=(0, 0, 0))
+            d.polygon([(s // 2, 3), (s // 2 - 3, 8), (s // 2 + 3, 8)], fill=fg)
+            d.polygon([(s // 2, s - 3), (s // 2 - 3, s - 8), (s // 2 + 3, s - 8)], fill=fg)
+            d.polygon([(3, s // 2), (8, s // 2 - 3), (8, s // 2 + 3)], fill=fg)
+            d.polygon([(s - 3, s // 2), (s - 8, s // 2 - 3), (s - 8, s // 2 + 3)], fill=fg)
+
         elif name == "brush":
-            d.line([(4, s-5), (s-5, 4)], fill=(0, 0, 0), width=3)
-            d.ellipse([3, s-7, 8, s-2], fill=(50, 50, 50))
+            d.line([(4, s - 5), (s - 5, 4)], fill=fg, width=3)
+            d.ellipse([3, s - 7, 8, s - 2], fill=brush_tip)
+
         elif name == "eraser":
-            d.polygon([(4, s-6), (s-10, 4), (s-4, 10), (10, s-4)], fill=(230, 230, 230), outline=(120, 120, 120))
+            d.polygon(
+                [(4, s - 6), (s - 10, 4), (s - 4, 10), (10, s - 4)],
+                fill=eraser_fill,
+                outline=gray_dark
+            )
+
         elif name == "fill":
-            d.polygon([(5, 5), (s-9, 5), (s-12, 12)], fill=(120, 120, 120))
-            d.polygon([(s-9, 5), (s-5, 9), (s-12, 12)], fill=(160, 160, 160))
-            d.polygon([(s-12, 12), (s-5, 19), (5, 19)], fill=(0, 120, 220))
+            d.polygon([(5, 5), (s - 9, 5), (s - 12, 12)], fill=gray_dark)
+            d.polygon([(s - 9, 5), (s - 5, 9), (s - 12, 12)], fill=gray_mid)
+            d.polygon([(s - 12, 12), (s - 5, 19), (5, 19)], fill=fill_blue)
+
         elif name == "eyedrop":
-            d.line([(5, s-6), (s-5, 6)], fill=(0, 0, 0), width=2)
-            d.ellipse([s-8, 3, s-3, 8], outline=(0, 0, 0), fill=(0, 150, 255))
+            d.line([(5, s - 6), (s - 5, 6)], fill=fg, width=2)
+            d.ellipse([s - 8, 3, s - 3, 8], outline=fg, fill=cyan)
+
         elif name == "magic":
-            d.line([(4, s-5), (s-5, 4)], fill=(0, 0, 0), width=2)
+            d.line([(4, s - 5), (s - 5, 4)], fill=fg, width=2)
             for off in (-4, 0, 4):
-                d.line([(s//2+off, 4), (s//2+off, 8)], fill=(255, 200, 0), width=1)
-                d.line([(s//2+off, s-4), (s//2+off, s-8)], fill=(255, 200, 0), width=1)
+                d.line([(s // 2 + off, 4), (s // 2 + off, 8)], fill=gold, width=1)
+                d.line([(s // 2 + off, s - 4), (s // 2 + off, s - 8)], fill=gold, width=1)
+
         elif name == "text":
-            d.text((6, 3), "T", fill=(0, 0, 0))
+            d.text((6, 3), "T", fill=fg)
+
         elif name == "line":
-            d.line([(4, s-5), (s-5, 4)], fill=(0, 0, 0), width=2)
+            d.line([(4, s - 5), (s - 5, 4)], fill=fg, width=2)
+
         elif name == "rect":
-            d.rectangle([4, 4, s-5, s-5], outline=(0, 0, 0), width=2)
+            d.rectangle([4, 4, s - 5, s - 5], outline=fg, width=2)
+
         elif name == "ellipse":
-            d.ellipse([4, 4, s-5, s-5], outline=(0, 0, 0), width=2)
+            d.ellipse([4, 4, s - 5, s - 5], outline=fg, width=2)
+
         elif name == "open":
-            d.rectangle([3, 9, s-4, s-4], outline=(0, 0, 0))
-            d.polygon([(4, 9), (9, 4), (s-6, 4), (s-11, 9)], fill=(200, 200, 200), outline=(0, 0, 0))
+            d.rectangle([3, 9, s - 4, s - 4], outline=fg)
+            d.polygon([(4, 9), (9, 4), (s - 6, 4), (s - 11, 9)], fill=gray_light, outline=fg)
+
         elif name == "save":
-            d.rectangle([4, 4, s-4, s-4], outline=(0, 0, 0), fill=(220, 220, 220))
-            d.rectangle([6, 6, s-6, 10], fill=(0, 0, 0))
+            d.rectangle([4, 4, s - 4, s - 4], outline=fg, fill=gray_lighter)
+            d.rectangle([6, 6, s - 6, 10], fill=fg)
+
         elif name == "export":
-            d.rectangle([4, 6, s-6, s-4], outline=(0, 0, 0))
-            d.polygon([(s-6, 10), (s-2, 10), (s-4, 6)], fill=(0, 120, 220))
+            d.rectangle([4, 6, s - 6, s - 4], outline=fg)
+            d.polygon([(s - 6, 10), (s - 2, 10), (s - 4, 6)], fill=fill_blue)
+
         elif name == "grid":
-            for i in range(4, s-3, 4):
-                d.line([(i, 3), (i, s-3)], fill=(0, 0, 0))
-                d.line([(3, i), (s-3, i)], fill=(0, 0, 0))
+            for i in range(4, s - 3, 4):
+                d.line([(i, 3), (i, s - 3)], fill=fg)
+                d.line([(3, i), (s - 3, i)], fill=fg)
+
         elif name == "fit":
-            d.rectangle([6, 6, s-6, s-6], outline=(0, 0, 0))
-            d.line([(3, 3), (9, 3)], fill=(0, 0, 0))
-            d.line([(3, 3), (3, 9)], fill=(0, 0, 0))
+            d.rectangle([6, 6, s - 6, s - 6], outline=fg)
+            d.line([(3, 3), (9, 3)], fill=fg)
+            d.line([(3, 3), (3, 9)], fill=fg)
+
         elif name == "reset":
-            d.arc([4, 4, s-4, s-4], start=30, end=330, fill=(0, 0, 0), width=2)
-            d.polygon([(s-6, 7), (s-2, 7), (s-4, 3)], fill=(0, 0, 0))
+            d.arc([4, 4, s - 4, s - 4], start=30, end=330, fill=fg, width=2)
+            d.polygon([(s - 6, 7), (s - 2, 7), (s - 4, 3)], fill=fg)
+
         else:
-            d.rectangle([2, 2, s-3, s-3], outline=(0, 0, 0))
+            d.rectangle([2, 2, s - 3, s - 3], outline=fg)
+
         ph = self._photo(im)
         self.cache[k] = ph
         return ph
@@ -156,80 +218,281 @@ class IconFactory:
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Mr5niper's Pyicon Editor and Creator v1.2.1.0")
-        # Keep your exact frame size and attach the 20px screen edge offsets
-        self.geometry("1560x900+20+20")
+        self.title("Mr5niper's Pyicon Editor and Creator v1.3.0.0")
+        self.geometry("1560x910+20+20")
         self.minsize(1350, 720)
-        
-        self._set_app_icon() 
 
-        # Config
+        self._set_app_icon()
+
         self.config_mgr = AppConfig()
         self.recent_files = self.config_mgr.recent_files.copy()
         self.theme = self.config_mgr.theme or "System"
 
-        # Theme
+        self._theme_colors = {}
+        self._tooltip_bg = "#3a3d41"
+        self._tooltip_fg = "#f1f1f1"
+        self._tooltip_bd = "#5a5f66"
+        self._toolbar_buttons = []
+        self._scales = []
+
+        self._menu_buttons = {}
+        self._active_popup = None
+        self._active_menu_name = None
+        self._ignore_next_global_click = False
+
         self.style = ttk.Style()
         self._apply_theme(self.theme)
 
-        # State
         self.current_file: Path | None = None
         self._pending_zoom = None
         self.current_tool = ToolType.PENCIL
         self.tool_buttons: dict[tk.Button, ToolType] = {}
         self.current_color = (0, 0, 0, 255)
         self.shape_fill_var = tk.BooleanVar(value=False)
+        self.grid_var = tk.BooleanVar(value=False)
 
-        # Build order
         self._build_menu()
         self._build_statusbar()
         self._build_canvas()
         self._build_toolbar()
 
-        # Init canvas after widgets
+        # Leave vertical room for the custom menu row
+        self.toolbar.grid_configure(pady=(30, 0))
+
+        self._apply_widget_theme()
+
         self.after_idle(lambda: self.canvas_editor.new_blank((256, 256)))
         self._update_status("Ready")
 
-        # Shortcuts
         self._bind_shortcuts()
         self.protocol("WM_DELETE_WINDOW", self._on_exit)
-        
+
     def _set_app_icon(self):
-        """Sets the window and taskbar icon, handling PyInstaller's runtime extraction."""
-        # Determine if running in a PyInstaller bundle
-        if hasattr(sys, '_MEIPASS'):
+        if hasattr(sys, "_MEIPASS"):
             base_path = Path(sys._MEIPASS)
         else:
-            # Running as normal script, go up from gui/ -> icon_editor/ -> root
             base_path = Path(__file__).resolve().parent.parent.parent
-            
+
         icon_path = base_path / "icon.ico"
-        
+
         if icon_path.exists():
             try:
-                # Using 'default=' ensures all TopLevel popups inherit this icon
                 self.iconbitmap(default=str(icon_path))
             except Exception as e:
                 print(f"Could not load taskbar icon: {e}")
 
-    # ---------------- Theming ----------------
+    def _default_theme_colors(self):
+        root_bg = self.cget("bg")
+        return {
+            "bg": root_bg,
+            "panel": root_bg,
+            "control": "#f0f0f0",
+            "hover": "#e8e8e8",
+            "pressed": "#dcdcdc",
+            "text": "#111111",
+            "muted_text": "#333333",
+            "border": "#b8b8b8",
+            "accent": "#4a90ff",
+            "field": "#ffffff",
+            "menu_bg": "#f0f0f0",
+            "menu_fg": "#111111",
+            "menu_active_bg": "#dfe8f7",
+            "menu_active_fg": "#111111",
+            "canvas_bg": "#d9d9d9",
+            "status_bg": root_bg,
+            "tooltip_bg": "#ffffe1",
+            "tooltip_fg": "#111111",
+            "tooltip_bd": "#a0a0a0",
+            "scale_trough": "#ffffff",
+            "scale_bg": root_bg,
+        }
+
     def _apply_theme(self, mode: str):
         try:
-            if mode.lower() == "dark":
+            mode_l = (mode or "System").lower()
+
+            if mode_l == "dark":
                 self.style.theme_use("clam")
-                dark_bg = "#2b2b2b"
-                fg = "#e8e8e8"
-                self.configure(bg=dark_bg)
-                for elem in ["TFrame", "TLabelframe", "TLabelframe.Label", "TLabel", "TCheckbutton", "TButton", "TMenubutton"]:
-                    self.style.configure(elem, background=dark_bg, foreground=fg)
-                self.style.configure("TEntry", fieldbackground="#3a3a3a", foreground=fg)
-            elif mode.lower() == "light":
+
+                colors = {
+                    "bg": "#2f3136",
+                    "panel": "#3a3d41",
+                    "control": "#44484d",
+                    "hover": "#4b5157",
+                    "pressed": "#58606a",
+                    "text": "#f1f1f1",
+                    "muted_text": "#cfcfcf",
+                    "border": "#5a5f66",
+                    "accent": "#6aa2ff",
+                    "field": "#40444b",
+                    "menu_bg": "#2f3136",
+                    "menu_fg": "#f1f1f1",
+                    "menu_active_bg": "#4b5157",
+                    "menu_active_fg": "#ffffff",
+                    "canvas_bg": "#3b3b3b",
+                    "status_bg": "#2b2d31",
+                    "tooltip_bg": "#3a3d41",
+                    "tooltip_fg": "#f1f1f1",
+                    "tooltip_bd": "#5a5f66",
+                    "scale_trough": "#40444b",
+                    "scale_bg": "#2f3136",
+                }
+
+                self._theme_colors = colors
+                self._tooltip_bg = colors["tooltip_bg"]
+                self._tooltip_fg = colors["tooltip_fg"]
+                self._tooltip_bd = colors["tooltip_bd"]
+
+                self.configure(bg=colors["bg"])
+
+                self.style.configure(".", background=colors["bg"], foreground=colors["text"])
+                self.style.configure("TFrame", background=colors["bg"])
+                self.style.configure("TLabelframe", background=colors["bg"], foreground=colors["text"])
+                self.style.configure("TLabelframe.Label", background=colors["bg"], foreground=colors["text"])
+                self.style.configure("TLabel", background=colors["bg"], foreground=colors["text"])
+                self.style.configure("TCheckbutton", background=colors["bg"], foreground=colors["text"])
+                self.style.map(
+                    "TCheckbutton",
+                    background=[("active", colors["bg"])],
+                    foreground=[("active", colors["text"])]
+                )
+
+                self.style.configure(
+                    "TButton",
+                    background=colors["control"],
+                    foreground=colors["text"],
+                    bordercolor=colors["border"],
+                    focusthickness=1,
+                    focuscolor=colors["accent"],
+                    lightcolor=colors["control"],
+                    darkcolor=colors["control"]
+                )
+                self.style.map(
+                    "TButton",
+                    background=[("active", colors["hover"]), ("pressed", colors["pressed"])],
+                    foreground=[("active", colors["text"]), ("pressed", colors["text"])]
+                )
+
+                self.style.configure(
+                    "TEntry",
+                    fieldbackground=colors["field"],
+                    foreground=colors["text"],
+                    insertcolor=colors["text"]
+                )
+
+                self.style.configure(
+                    "Horizontal.TScale",
+                    background=colors["scale_bg"],
+                    troughcolor=colors["scale_trough"],
+                    bordercolor=colors["border"],
+                    lightcolor=colors["scale_trough"],
+                    darkcolor=colors["scale_trough"]
+                )
+                self.style.map(
+                    "Horizontal.TScale",
+                    background=[("active", colors["scale_bg"])],
+                    troughcolor=[("active", colors["scale_trough"])]
+                )
+
+                self.style.configure(
+                    "Vertical.TScrollbar",
+                    background=colors["control"],
+                    troughcolor=colors["bg"],
+                    bordercolor=colors["border"],
+                    arrowcolor=colors["text"],
+                    lightcolor=colors["control"],
+                    darkcolor=colors["control"]
+                )
+                self.style.map(
+                    "Vertical.TScrollbar",
+                    background=[("active", colors["hover"]), ("pressed", colors["pressed"])]
+                )
+
+                self.style.configure(
+                    "Horizontal.TScrollbar",
+                    background=colors["control"],
+                    troughcolor=colors["bg"],
+                    bordercolor=colors["border"],
+                    arrowcolor=colors["text"],
+                    lightcolor=colors["control"],
+                    darkcolor=colors["control"]
+                )
+                self.style.map(
+                    "Horizontal.TScrollbar",
+                    background=[("active", colors["hover"]), ("pressed", colors["pressed"])]
+                )
+
+                self.style.configure("TSeparator", background=colors["border"])
+
+            elif mode_l == "light":
                 self.style.theme_use("clam")
                 bg = "#f0f0f0"
                 self.configure(bg=bg)
                 for elem in ["TFrame", "TLabelframe", "TLabelframe.Label", "TLabel", "TCheckbutton", "TButton", "TMenubutton"]:
                     self.style.configure(elem, background=bg, foreground="#111")
                 self.style.configure("TEntry", fieldbackground="#ffffff", foreground="#111")
+                self.style.configure(
+                    "Horizontal.TScale",
+                    background="#f0f0f0",
+                    troughcolor="#ffffff",
+                    bordercolor="#b8b8b8",
+                    lightcolor="#ffffff",
+                    darkcolor="#ffffff"
+                )
+                self.style.map(
+                    "Horizontal.TScale",
+                    background=[("active", "#f0f0f0")],
+                    troughcolor=[("active", "#ffffff")]
+                )
+                self.style.configure(
+                    "Vertical.TScrollbar",
+                    background="#f0f0f0",
+                    troughcolor="#f0f0f0",
+                    bordercolor="#b8b8b8",
+                    arrowcolor="#111111",
+                    lightcolor="#f0f0f0",
+                    darkcolor="#f0f0f0"
+                )
+                self.style.configure(
+                    "Horizontal.TScrollbar",
+                    background="#f0f0f0",
+                    troughcolor="#f0f0f0",
+                    bordercolor="#b8b8b8",
+                    arrowcolor="#111111",
+                    lightcolor="#f0f0f0",
+                    darkcolor="#f0f0f0"
+                )
+                self.style.map("TButton", background=[("active", "#e8e8e8"), ("pressed", "#dcdcdc")], foreground=[("active", "#111111"), ("pressed", "#111111")])
+                self.style.map("Vertical.TScrollbar", background=[("active", "#e8e8e8"), ("pressed", "#dcdcdc")])
+                self.style.map("Horizontal.TScrollbar", background=[("active", "#e8e8e8"), ("pressed", "#dcdcdc")])
+
+                self._theme_colors = {
+                    "bg": "#f0f0f0",
+                    "panel": "#f6f6f6",
+                    "control": "#ffffff",
+                    "hover": "#e8e8e8",
+                    "pressed": "#dcdcdc",
+                    "text": "#111111",
+                    "muted_text": "#333333",
+                    "border": "#b8b8b8",
+                    "accent": "#4a90ff",
+                    "field": "#ffffff",
+                    "menu_bg": "#f0f0f0",
+                    "menu_fg": "#111111",
+                    "menu_active_bg": "#dfe8f7",
+                    "menu_active_fg": "#111111",
+                    "canvas_bg": "#d9d9d9",
+                    "status_bg": "#f0f0f0",
+                    "tooltip_bg": "#ffffe1",
+                    "tooltip_fg": "#111111",
+                    "tooltip_bd": "#a0a0a0",
+                    "scale_trough": "#ffffff",
+                    "scale_bg": "#f0f0f0",
+                }
+                self._tooltip_bg = self._theme_colors["tooltip_bg"]
+                self._tooltip_fg = self._theme_colors["tooltip_fg"]
+                self._tooltip_bd = self._theme_colors["tooltip_bd"]
+
             else:
                 try:
                     if os.name == "nt":
@@ -238,75 +501,586 @@ class MainWindow(tk.Tk):
                         self.style.theme_use("default")
                 except Exception:
                     self.style.theme_use("clam")
+
+                # IMPORTANT:
+                # Treat System as a clean reset of all manual dark-mode colors.
+                # Using the same neutral palette as Light prevents dark values from lingering.
+                self._theme_colors = {
+                    "bg": "#f0f0f0",
+                    "panel": "#f6f6f6",
+                    "control": "#ffffff",
+                    "hover": "#e8e8e8",
+                    "pressed": "#dcdcdc",
+                    "text": "#111111",
+                    "muted_text": "#333333",
+                    "border": "#b8b8b8",
+                    "accent": "#4a90ff",
+                    "field": "#ffffff",
+                    "menu_bg": "#f0f0f0",
+                    "menu_fg": "#111111",
+                    "menu_active_bg": "#dfe8f7",
+                    "menu_active_fg": "#111111",
+                    "canvas_bg": "#d9d9d9",
+                    "status_bg": "#f0f0f0",
+                    "tooltip_bg": "#ffffe1",
+                    "tooltip_fg": "#111111",
+                    "tooltip_bd": "#a0a0a0",
+                    "scale_trough": "#ffffff",
+                    "scale_bg": "#f0f0f0",
+                }
+
+                self._tooltip_bg = self._theme_colors["tooltip_bg"]
+                self._tooltip_fg = self._theme_colors["tooltip_fg"]
+                self._tooltip_bd = self._theme_colors["tooltip_bd"]
+
+                self.configure(bg=self._theme_colors["bg"])
+
+                self.style.configure(".", background=self._theme_colors["bg"], foreground=self._theme_colors["text"])
+                self.style.configure("TFrame", background=self._theme_colors["bg"])
+                self.style.configure("TLabelframe", background=self._theme_colors["bg"], foreground=self._theme_colors["text"])
+                self.style.configure("TLabelframe.Label", background=self._theme_colors["bg"], foreground=self._theme_colors["text"])
+                self.style.configure("TLabel", background=self._theme_colors["bg"], foreground=self._theme_colors["text"])
+                self.style.configure("TCheckbutton", background=self._theme_colors["bg"], foreground=self._theme_colors["text"])
+                self.style.map(
+                    "TCheckbutton",
+                    background=[("active", self._theme_colors["bg"])],
+                    foreground=[("active", self._theme_colors["text"])]
+                )
+
+                self.style.configure(
+                    "TButton",
+                    background=self._theme_colors["control"],
+                    foreground=self._theme_colors["text"],
+                    bordercolor=self._theme_colors["border"]
+                )
+                self.style.map(
+                    "TButton",
+                    background=[("active", self._theme_colors["hover"]), ("pressed", self._theme_colors["pressed"])],
+                    foreground=[("active", self._theme_colors["text"]), ("pressed", self._theme_colors["text"])]
+                )
+
+                self.style.configure(
+                    "TEntry",
+                    fieldbackground=self._theme_colors["field"],
+                    foreground=self._theme_colors["text"],
+                    insertcolor=self._theme_colors["text"]
+                )
+
+                self.style.configure(
+                    "Horizontal.TScale",
+                    background=self._theme_colors["scale_bg"],
+                    troughcolor=self._theme_colors["scale_trough"],
+                    bordercolor=self._theme_colors["border"],
+                    lightcolor=self._theme_colors["scale_trough"],
+                    darkcolor=self._theme_colors["scale_trough"]
+                )
+                self.style.map(
+                    "Horizontal.TScale",
+                    background=[("active", self._theme_colors["scale_bg"])],
+                    troughcolor=[("active", self._theme_colors["scale_trough"])]
+                )
+
+                self.style.configure(
+                    "Vertical.TScrollbar",
+                    background=self._theme_colors["control"],
+                    troughcolor=self._theme_colors["bg"],
+                    bordercolor=self._theme_colors["border"],
+                    arrowcolor=self._theme_colors["text"],
+                    lightcolor=self._theme_colors["control"],
+                    darkcolor=self._theme_colors["control"]
+                )
+                self.style.map(
+                    "Vertical.TScrollbar",
+                    background=[("active", self._theme_colors["hover"]), ("pressed", self._theme_colors["pressed"])]
+                )
+
+                self.style.configure(
+                    "Horizontal.TScrollbar",
+                    background=self._theme_colors["control"],
+                    troughcolor=self._theme_colors["bg"],
+                    bordercolor=self._theme_colors["border"],
+                    arrowcolor=self._theme_colors["text"],
+                    lightcolor=self._theme_colors["control"],
+                    darkcolor=self._theme_colors["control"]
+                )
+                self.style.map(
+                    "Horizontal.TScrollbar",
+                    background=[("active", self._theme_colors["hover"]), ("pressed", self._theme_colors["pressed"])]
+                )
+
+                self.style.configure("TSeparator", background=self._theme_colors["border"])
+
+            self._apply_widget_theme()
+
+        except Exception as e:
+            print(f"Theme apply failed: {e}")
+
+    def _build_menu(self):
+        self.config(menu="")
+        self.menu_row = tk.Frame(self, bd=0, highlightthickness=0)
+        self.menu_row.place(x=0, y=0, relwidth=1, height=30)
+        self.menu_row.lift()
+
+        for name in ("File", "Edit", "View", "Help"):
+            lbl = tk.Label(
+                self.menu_row,
+                text=name,
+                padx=10,
+                pady=4,
+                bd=0,
+                relief="flat",
+                cursor="hand2"
+            )
+            lbl.pack(side="left", padx=(2, 0))
+            lbl.bind("<Button-1>", lambda e, n=name: self._toggle_custom_menu(n))
+            lbl.bind("<Enter>", lambda e, n=name: self._on_menu_label_hover(n))
+            lbl.bind("<Leave>", lambda e, n=name: self._on_menu_label_leave(n))
+            self._menu_buttons[name] = lbl
+
+        self.bind_all("<Button-1>", self._global_menu_click_close, add="+")
+        self.bind("<Escape>", lambda e: self._close_active_menu(), add="+")
+
+    def _toggle_custom_menu(self, menu_name: str):
+        if self._active_menu_name == menu_name and self._active_popup is not None:
+            self._close_active_menu()
+            return
+        self._ignore_next_global_click = True
+        self._open_custom_menu(menu_name)
+
+    def _open_custom_menu(self, menu_name: str):
+        self._close_active_menu()
+
+        btn = self._menu_buttons.get(menu_name)
+        if btn is None:
+            return
+
+        colors = self._theme_colors or {}
+        is_dark = (self.theme or "System").lower() == "dark"
+
+        menu_bg = colors.get("menu_bg", "#2f3136" if is_dark else "#f0f0f0")
+        menu_fg = colors.get("menu_fg", "#f1f1f1" if is_dark else "#111111")
+        menu_hover = colors.get("menu_active_bg", "#4b5157" if is_dark else "#dfe8f7")
+        menu_hover_fg = colors.get("menu_active_fg", "#ffffff" if is_dark else "#111111")
+        menu_border = colors.get("border", "#5a5f66" if is_dark else "#b8b8b8")
+
+        popup = tk.Toplevel(self)
+        popup.overrideredirect(True)
+        popup.transient(self)
+        popup.configure(bg=menu_border)
+        popup.attributes("-topmost", True)
+        popup.lift()
+
+        x = btn.winfo_rootx()
+        y = btn.winfo_rooty() + btn.winfo_height()
+        popup.geometry(f"+{x}+{y}")
+        popup.update_idletasks()
+
+        outer = tk.Frame(popup, bg=menu_border, bd=0, highlightthickness=0)
+        outer.pack(fill="both", expand=True)
+
+        inner = tk.Frame(outer, bg=menu_bg, bd=0, highlightthickness=0)
+        inner.pack(fill="both", expand=True, padx=1, pady=1)
+
+        items = self._get_menu_items(menu_name)
+
+        for item in items:
+            if item == "---":
+                sep = tk.Frame(inner, height=1, bg=menu_border, bd=0, highlightthickness=0)
+                sep.pack(fill="x", padx=4, pady=4)
+                continue
+
+            label = item["label"]
+            command = item.get("command")
+            checked = item.get("checked", False)
+            enabled = item.get("enabled", True)
+
+            row_text = f"✓ {label}" if checked else f"   {label}"
+
+            row = tk.Label(
+                inner,
+                text=row_text,
+                anchor="w",
+                justify="left",
+                padx=12,
+                pady=6,
+                bg=menu_bg,
+                fg=menu_fg if enabled else colors.get("muted_text", "#888888"),
+                bd=0,
+                relief="flat"
+            )
+            row.pack(fill="x")
+
+            if enabled and command is not None:
+                row.bind("<Enter>", lambda e, w=row: w.configure(bg=menu_hover, fg=menu_hover_fg))
+                row.bind("<Leave>", lambda e, w=row, fg0=menu_fg: w.configure(bg=menu_bg, fg=fg0))
+                row.bind("<Button-1>", lambda e, cmd=command: self._execute_menu_command(cmd))
+
+        self._active_popup = popup
+        self._active_menu_name = menu_name
+        self._style_menu_buttons()
+
+    def _execute_menu_command(self, command):
+        self._close_active_menu()
+        if command is not None:
+            self.after(1, command)
+
+    def _close_active_menu(self):
+        if self._active_popup is not None:
+            try:
+                self._active_popup.destroy()
+            except Exception:
+                pass
+        self._active_popup = None
+        self._active_menu_name = None
+        self._style_menu_buttons()
+
+    def _global_menu_click_close(self, event):
+        if self._ignore_next_global_click:
+            self._ignore_next_global_click = False
+            return
+
+        if self._active_popup is None:
+            return
+
+        widget = event.widget
+
+        if widget in self._menu_buttons.values():
+            return
+
+        try:
+            popup_widget = self._active_popup
+            while widget is not None:
+                if widget == popup_widget:
+                    return
+                widget = widget.master
         except Exception:
             pass
 
-    # ---------------- Menu ----------------
-    def _build_menu(self):
-        menubar = tk.Menu(self)
-        # File
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="New (Ctrl+N)", command=self.new_canvas)
-        file_menu.add_command(label="Open... (Ctrl+O)", command=self.open_image)
-        self.recent_menu = tk.Menu(file_menu, tearoff=0)
-        file_menu.add_cascade(label="Open Recent", menu=self.recent_menu)
-        self._refresh_recent_menu()
-        file_menu.add_separator()
-        file_menu.add_command(label="Save PNG... (Ctrl+S)", command=self.save_png)
-        file_menu.add_command(label="Export ICO... (Ctrl+E)", command=self.export_ico)
-        file_menu.add_command(label="Export ICNS... (macOS)", command=self.export_icns)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self._on_exit)
-        menubar.add_cascade(label="File", menu=file_menu)
+        self._close_active_menu()
 
-        # Edit
-        edit_menu = tk.Menu(menubar, tearoff=0)
-        edit_menu.add_command(label="Undo (Ctrl+Z)", command=self.undo)
-        edit_menu.add_command(label="Redo (Ctrl+Y)", command=self.redo)
-        edit_menu.add_separator()
-        edit_menu.add_command(label="Invert Colors", command=self._quick_invert)
-        edit_menu.add_command(label="Grayscale", command=self._quick_grayscale)
-        edit_menu.add_command(label="Flip Horizontal", command=self._quick_flip_h)
-        edit_menu.add_command(label="Flip Vertical", command=self._quick_flip_v)
-        edit_menu.add_command(label="Trim Transparent", command=self._quick_trim)
-        edit_menu.add_separator()
-        edit_menu.add_command(label="Deselect (Esc)", command=self._deselect)
-        menubar.add_cascade(label="Edit", menu=edit_menu)
+    def _on_menu_label_hover(self, menu_name: str):
+        if self._active_popup is not None and self._active_menu_name != menu_name:
+            self._open_custom_menu(menu_name)
+        else:
+            self._style_menu_buttons(hover_name=menu_name)
 
-        # View
-        view_menu = tk.Menu(menubar, tearoff=0)
-        view_menu.add_checkbutton(label="Show Grid", variable=tk.BooleanVar(value=False), command=self._toggle_grid)
-        theme_menu = tk.Menu(view_menu, tearoff=0)
-        theme_menu.add_command(label="Light", command=lambda: self._set_theme("Light"))
-        theme_menu.add_command(label="Dark", command=lambda: self._set_theme("Dark"))
-        theme_menu.add_command(label="System", command=lambda: self._set_theme("System"))
-        view_menu.add_cascade(label="Theme", menu=theme_menu)
-        menubar.add_cascade(label="View", menu=view_menu)
+    def _on_menu_label_leave(self, menu_name: str):
+        self._style_menu_buttons()
 
-        # Help
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="About", command=self._about)
-        menubar.add_cascade(label="Help", menu=help_menu)
+    def _style_menu_buttons(self, hover_name=None):
+        colors = self._theme_colors or {}
+        is_dark = (self.theme or "System").lower() == "dark"
 
-        self.config(menu=menubar)
+        bg = colors.get("bg", "#2f3136" if is_dark else "#f0f0f0")
+        fg = colors.get("text", "#f1f1f1" if is_dark else "#111111")
+        hover_bg = colors.get("menu_active_bg", "#4b5157" if is_dark else "#dfe8f7")
+        hover_fg = colors.get("menu_active_fg", "#ffffff" if is_dark else "#111111")
 
-    # ---------------- Toolbar (Ribbon-like single row) ----------------
+        if hasattr(self, "menu_row"):
+            self.menu_row.configure(bg=bg)
+
+        for name, lbl in self._menu_buttons.items():
+            active = (name == self._active_menu_name)
+            hovered = (name == hover_name)
+            if active or hovered:
+                lbl.configure(bg=hover_bg, fg=hover_fg)
+            else:
+                lbl.configure(bg=bg, fg=fg)
+
+    def _get_menu_items(self, menu_name: str):
+        if menu_name == "File":
+            return [
+                {"label": "New (Ctrl+N)", "command": self.new_canvas},
+                {"label": "Open... (Ctrl+O)", "command": self.open_image},
+                "---",
+                *self._get_recent_menu_items(),
+                "---",
+                {"label": "Save PNG... (Ctrl+S)", "command": self.save_png},
+                {"label": "Export ICO... (Ctrl+E)", "command": self.export_ico},
+                {"label": "Export ICNS... (macOS)", "command": self.export_icns},
+                "---",
+                {"label": "Exit", "command": self._on_exit},
+            ]
+
+        if menu_name == "Edit":
+            return [
+                {"label": "Undo (Ctrl+Z)", "command": self.undo},
+                {"label": "Redo (Ctrl+Y)", "command": self.redo},
+                "---",
+                {"label": "Invert Colors", "command": self._quick_invert},
+                {"label": "Grayscale", "command": self._quick_grayscale},
+                {"label": "Flip Horizontal", "command": self._quick_flip_h},
+                {"label": "Flip Vertical", "command": self._quick_flip_v},
+                {"label": "Trim Transparent", "command": self._quick_trim},
+                "---",
+                {"label": "Deselect (Esc)", "command": self._deselect},
+            ]
+
+        if menu_name == "View":
+            return [
+                {"label": "Show Grid", "command": self._toggle_grid, "checked": bool(self.grid_var.get())},
+                "---",
+                {"label": "Theme: Light", "command": lambda: self._set_theme("Light")},
+                {"label": "Theme: Dark", "command": lambda: self._set_theme("Dark")},
+                {"label": "Theme: System", "command": lambda: self._set_theme("System")},
+            ]
+
+        if menu_name == "Help":
+            return [
+                {"label": "About", "command": self._about},
+            ]
+
+        return []
+
+    def _get_recent_menu_items(self):
+        if not self.recent_files:
+            return [{"label": "Open Recent: (Empty)", "command": None, "enabled": False}]
+
+        items = []
+        for path_str in self.recent_files:
+            p = Path(path_str)
+            label = p.name if len(p.name) < 48 else "..." + p.name[-45:]
+            items.append({
+                "label": f"Open Recent: {label}",
+                "command": lambda s=path_str: self._open_recent(s)
+            })
+        return items
+
+    def _restyle_scales(self):
+        for scale in getattr(self, "_scales", []):
+            try:
+                scale.configure(style="Horizontal.TScale")
+                scale.update_idletasks()
+            except Exception:
+                pass
+
+    def _force_full_theme_refresh(self):
+        try:
+            self._apply_widget_theme()
+
+            if hasattr(self, "menu_row"):
+                self.menu_row.update_idletasks()
+                self.menu_row.lift()
+
+            if hasattr(self, "toolbar"):
+                self.toolbar.update_idletasks()
+
+            if hasattr(self, "main_frame"):
+                self.main_frame.update_idletasks()
+
+            if hasattr(self, "statusbar"):
+                self.statusbar.update_idletasks()
+
+            if hasattr(self, "canvas_editor") and self.canvas_editor is not None:
+                try:
+                    self.canvas_editor._refresh_display()
+                    self.canvas_editor.update_idletasks()
+                except Exception:
+                    pass
+
+            self.update()
+        except Exception as e:
+            print(f"Theme refresh failed: {e}")
+
+    def _apply_widget_theme(self):
+        colors = self._theme_colors or {}
+        mode_l = (self.theme or "System").lower()
+        is_dark = mode_l == "dark"
+
+        bg = colors.get("bg", "#f0f0f0")
+        control = colors.get("control", "#ffffff")
+        text = colors.get("text", "#111111")
+        border = colors.get("border", "#b8b8b8")
+        accent = colors.get("accent", "#4a90ff")
+        #canvas_bg = colors.get("canvas_bg", "#d9d9d9")
+        status_bg = colors.get("status_bg", bg)
+
+        try:
+            self.configure(bg=bg)
+        except Exception:
+            pass
+
+        if hasattr(self, "menu_row"):
+            try:
+                self.menu_row.configure(bg=bg)
+                self.menu_row.lift()
+            except Exception:
+                pass
+
+        self._style_menu_buttons()
+
+        if hasattr(self, "toolbar"):
+            try:
+                self.toolbar.configure(style="TFrame")
+            except Exception:
+                pass
+
+        if hasattr(self, "main_frame"):
+            try:
+                self.main_frame.configure(style="TFrame")
+            except Exception:
+                pass
+
+        if hasattr(self, "statusbar"):
+            try:
+                self.statusbar.configure(style="TFrame")
+            except Exception:
+                pass
+
+        if hasattr(self, "canvas_editor") and self.canvas_editor is not None:
+            try:
+                self.canvas_editor.configure(style="TFrame")
+            except Exception:
+                pass
+
+        for attr in ("status_label", "cursor_label", "dim_label", "zoom_label"):
+            lbl = getattr(self, attr, None)
+            if lbl is not None:
+                try:
+                    lbl.configure(background=status_bg, foreground=text)
+                except Exception:
+                    pass
+
+        if hasattr(self, "color_display"):
+            try:
+                self.color_display.configure(
+                    highlightbackground=border,
+                    highlightcolor=accent
+                )
+            except Exception:
+                pass
+
+        hover = colors.get("hover", "#4b5157")
+        light_hover = "#e8e8e8"
+
+        for btn in getattr(self, "_toolbar_buttons", []):
+            try:
+                if is_dark:
+                    btn.configure(
+                        bg=control,
+                        fg=text,
+                        activebackground=hover,
+                        activeforeground=text,
+                        relief=btn.cget("relief"),
+                        bd=1,
+                        highlightthickness=1,
+                        highlightbackground=border,
+                        highlightcolor=accent,
+                        disabledforeground="#888888"
+                    )
+                else:
+                    btn.configure(
+                        bg="#f0f0f0",
+                        fg="#111111",
+                        activebackground=light_hover,
+                        activeforeground="#111111",
+                        relief=btn.cget("relief"),
+                        bd=1,
+                        highlightthickness=1,
+                        highlightbackground="#b8b8b8",
+                        highlightcolor="#4a90ff",
+                        disabledforeground="#888888"
+                    )
+            except Exception:
+                pass
+
+        self._style_menu_buttons()
+        self._restyle_scales()
+        self._rebuild_toolbar_icons()
+
+    def _rebuild_toolbar_icons(self):
+        if not hasattr(self, "_toolbar_buttons"):
+            return
+
+        icon_fg = (240, 240, 240, 255) if (self.theme or "System").lower() == "dark" else (0, 0, 0, 255)
+        icons = IconFactory(size=22, fg=icon_fg)
+
+        button_order = [
+            "open", "save", "export",
+            "select", "move", "brush", "eraser", "fill", "eyedrop", "magic", "text", "line", "rect", "ellipse",
+            "grid", "fit", "reset"
+        ]
+
+        for btn, icon_name in zip(self._toolbar_buttons, button_order):
+            try:
+                img = icons.get(icon_name)
+                btn.configure(image=img)
+                btn.image = img
+            except Exception:
+                pass
+
+    def _build_statusbar(self):
+        self.statusbar = ttk.Frame(self)
+        self.statusbar.grid(row=3, column=0, sticky="ew")
+        self.statusbar.columnconfigure(0, weight=1)
+        self.status_label = ttk.Label(self.statusbar, text="Status: Ready", anchor="w")
+        self.status_label.grid(row=0, column=0, sticky="ew", padx=8)
+        self.cursor_label = ttk.Label(self.statusbar, text="Cursor: -, -", width=20, anchor="e")
+        self.cursor_label.grid(row=0, column=1, sticky="e", padx=8)
+        self.dim_label = ttk.Label(self.statusbar, text="Canvas: 0x0", width=16, anchor="e")
+        self.dim_label.grid(row=0, column=2, sticky="e", padx=8)
+        self.zoom_label = ttk.Label(self.statusbar, text="Zoom: 4x", width=12, anchor="e")
+        self.zoom_label.grid(row=0, column=3, sticky="e", padx=8)
+        if self._pending_zoom is not None:
+            self.zoom_label.config(text=f"Zoom: {self._pending_zoom}x")
+            self._pending_zoom = None
+
+    def _build_canvas(self):
+        ttk.Separator(self, orient="horizontal").grid(row=1, column=0, sticky="ew")
+        self.main_frame = ttk.Frame(self)
+        self.main_frame.grid(row=2, column=0, sticky="nsew")
+        self.rowconfigure(2, weight=1)
+        self.main_frame.columnconfigure(0, weight=1)
+        self.main_frame.rowconfigure(0, weight=1)
+
+        self.canvas_editor = CanvasEditor(
+            self.main_frame,
+            on_status=lambda msg: self.after_idle(lambda: self._update_status(msg)),
+            on_cursor=lambda x, y: self.after_idle(lambda: self._update_cursor(x, y)),
+            on_size_change=lambda w, h: self.after_idle(lambda: self._update_image_info(w, h)),
+            on_zoom_change=lambda z: self.after_idle(lambda: self._update_zoom_info(z)),
+            on_layers_changed=lambda: self.after_idle(self._refresh_layers_ui),
+            on_color_ui=lambda rgba: self.after_idle(lambda: self._set_ui_color(rgba))
+        )
+        self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+
     def _build_toolbar(self):
         self.toolbar = ttk.Frame(self, padding=(6, 6))
         self.toolbar.grid(row=0, column=0, sticky="ew")
         self.columnconfigure(0, weight=1)
 
-        icons = IconFactory(size=22)
+        icon_fg = (240, 240, 240, 255) if (self.theme or "System").lower() == "dark" else (0, 0, 0, 255)
+        icons = IconFactory(size=22, fg=icon_fg)
 
         def add_btn(parent, icon_name, cmd, tip):
             img = icons.get(icon_name)
-            btn = tk.Button(parent, image=img, width=28, height=28, command=cmd, relief="raised")
+            c = self._theme_colors or {}
+            is_dark = (self.theme or "System").lower() == "dark"
+
+            btn = tk.Button(
+                parent,
+                image=img,
+                width=28,
+                height=28,
+                command=cmd,
+                relief="raised",
+                bd=1,
+                bg=c.get("control", "#44484d") if is_dark else "#f0f0f0",
+                fg=c.get("text", "#f1f1f1") if is_dark else "#111111",
+                activebackground=c.get("control", "#44484d") if is_dark else "#f0f0f0",
+                activeforeground=c.get("text", "#f1f1f1") if is_dark else "#111111",
+                highlightthickness=1,
+                highlightbackground=c.get("border", "#5a5f66") if is_dark else "#b8b8b8",
+                highlightcolor=c.get("accent", "#6aa2ff") if is_dark else "#4a90ff",
+                padx=0,
+                pady=0
+            )
             btn.image = img
             btn.pack(side="left", padx=2)
             Tooltip(btn, tip)
+            self._toolbar_buttons.append(btn)
             return btn
 
-        # File group
         file_grp = ttk.Frame(self.toolbar)
         file_grp.pack(side="left", padx=(0, 8))
         add_btn(file_grp, "open", self.open_image, "Open Image (Ctrl+O)")
@@ -315,7 +1089,6 @@ class MainWindow(tk.Tk):
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
 
-        # Tools group
         tools_grp = ttk.Frame(self.toolbar)
         tools_grp.pack(side="left", padx=(0, 8))
         self.tool_buttons.clear()
@@ -338,7 +1111,6 @@ class MainWindow(tk.Tk):
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
 
-        # Shape fill
         shape_grp = ttk.Frame(self.toolbar)
         shape_grp.pack(side="left", padx=(0, 8))
         ttk.Checkbutton(
@@ -350,49 +1122,68 @@ class MainWindow(tk.Tk):
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
 
-        # Brush size
         size_grp = ttk.Frame(self.toolbar)
         size_grp.pack(side="left", padx=(0, 8))
-        # Brush size slider
         ttk.Label(size_grp, text="Size").pack(side="left", padx=(0, 4))
         self.brush_size_var = tk.IntVar(value=5)
-        size_scale = ttk.Scale(size_grp, from_=1, to=64, orient="horizontal",
-                               command=lambda v: self._on_brush_size_change(int(float(v))))
+        size_scale = ttk.Scale(
+            size_grp,
+            from_=1,
+            to=64,
+            orient="horizontal",
+            command=lambda v: self._on_brush_size_change(int(float(v)))
+        )
         size_scale.set(5)
-        # Drop ipadx and allow natural layout expansion
         size_scale.pack(side="left", fill="x", expand=True, padx=2)
+        self._scales.append(size_scale)
         Tooltip(size_scale, "Brush Size")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
 
-        # Color + alpha + tolerance
         color_grp = ttk.Frame(self.toolbar)
         color_grp.pack(side="left", padx=(0, 8))
         ttk.Label(color_grp, text="Color").pack(side="left", padx=(0, 4))
-        self.color_display = tk.Canvas(color_grp, width=30, height=18, bg="#000000", highlightthickness=1)
+        self.color_display = tk.Canvas(
+            color_grp,
+            width=30,
+            height=18,
+            bg="#000000",
+            highlightthickness=1,
+            highlightbackground=self._theme_colors.get("border", "#b8b8b8"),
+            highlightcolor=self._theme_colors.get("accent", "#4a90ff")
+        )
         self.color_display.pack(side="left")
         self.color_display.bind("<Button-1>", self._pick_color)
         Tooltip(self.color_display, "Pick Color")
         ttk.Label(color_grp, text="Alpha").pack(side="left", padx=(10, 4))
         self.alpha_var = tk.IntVar(value=255)
-        # Alpha slider
-        alpha_scale = ttk.Scale(color_grp, from_=0, to=255, orient="horizontal",
-                                command=lambda v: self._on_alpha_change(int(float(v))))
+        alpha_scale = ttk.Scale(
+            color_grp,
+            from_=0,
+            to=255,
+            orient="horizontal",
+            command=lambda v: self._on_alpha_change(int(float(v)))
+        )
         alpha_scale.set(255)
         alpha_scale.pack(side="left", fill="x", expand=True, padx=2)
+        self._scales.append(alpha_scale)
         Tooltip(alpha_scale, "Alpha (opacity 0–255)")
         ttk.Label(color_grp, text="Tol").pack(side="left", padx=(10, 4))
         self.tol_var = tk.IntVar(value=0)
-        # Tolerance slider
-        tol_scale = ttk.Scale(color_grp, from_=0, to=100, orient="horizontal",
-                              command=lambda v: self.canvas_editor.set_fill_tolerance(int(float(v))))
+        tol_scale = ttk.Scale(
+            color_grp,
+            from_=0,
+            to=100,
+            orient="horizontal",
+            command=lambda v: self.canvas_editor.set_fill_tolerance(int(float(v)))
+        )
         tol_scale.set(0)
         tol_scale.pack(side="left", fill="x", expand=True, padx=2)
+        self._scales.append(tol_scale)
         Tooltip(tol_scale, "Fill Tolerance")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", padx=6, fill="y")
 
-        # View: grid, fit, reset, zoom
         view_grp = ttk.Frame(self.toolbar)
         view_grp.pack(side="left", padx=(0, 8))
         add_btn(view_grp, "grid", self._toggle_grid, "Toggle Grid")
@@ -400,55 +1191,22 @@ class MainWindow(tk.Tk):
         add_btn(view_grp, "reset", self._reset_scroll, "Reset Scroll")
         ttk.Label(view_grp, text="Zoom").pack(side="left", padx=(10, 4))
         self.zoom_var = tk.IntVar(value=4)
-        zoom_scale = ttk.Scale(view_grp, from_=1, to=16, orient="horizontal",
-                               command=lambda v: self._set_zoom_from_scale(int(float(v))))
+        zoom_scale = ttk.Scale(
+            view_grp,
+            from_=1,
+            to=16,
+            orient="horizontal",
+            command=lambda v: self._set_zoom_from_scale(int(float(v)))
+        )
         zoom_scale.set(4)
-        zoom_scale.pack(side="left", ipadx=40)
+        zoom_scale.pack(side="left", fill="x", expand=True, padx=2)
+        self._scales.append(zoom_scale)
         Tooltip(zoom_scale, "Zoom 1x–16x")
 
     def _update_tool_visuals(self):
         for btn, t in self.tool_buttons.items():
             btn.config(relief="sunken" if t == self.current_tool else "raised")
 
-    # ---------------- Canvas ----------------
-    def _build_canvas(self):
-        ttk.Separator(self, orient="horizontal").grid(row=1, column=0, sticky="ew")
-        self.main_frame = ttk.Frame(self)
-        self.main_frame.grid(row=2, column=0, sticky="nsew")
-        self.rowconfigure(2, weight=1)
-        self.main_frame.columnconfigure(0, weight=1)
-        self.main_frame.rowconfigure(0, weight=1)
-
-        # Defer callbacks to avoid construction-time races
-        self.canvas_editor = CanvasEditor(
-            self.main_frame,
-            on_status=lambda msg: self.after_idle(lambda: self._update_status(msg)),
-            on_cursor=lambda x, y: self.after_idle(lambda: self._update_cursor(x, y)),
-            on_size_change=lambda w, h: self.after_idle(lambda: self._update_image_info(w, h)),
-            on_zoom_change=lambda z: self.after_idle(lambda: self._update_zoom_info(z)),
-            on_layers_changed=lambda: self.after_idle(self._refresh_layers_ui),
-            on_color_ui=lambda rgba: self.after_idle(lambda: self._set_ui_color(rgba))  # eyedropper updates UI
-        )
-        self.canvas_editor.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
-
-    # ---------------- Status bar ----------------
-    def _build_statusbar(self):
-        self.statusbar = ttk.Frame(self)
-        self.statusbar.grid(row=3, column=0, sticky="ew")
-        self.statusbar.columnconfigure(0, weight=1)
-        self.status_label = ttk.Label(self.statusbar, text="Status: Ready", anchor="w")
-        self.status_label.grid(row=0, column=0, sticky="ew", padx=8)
-        self.cursor_label = ttk.Label(self.statusbar, text="Cursor: -, -", width=20, anchor="e")
-        self.cursor_label.grid(row=0, column=1, sticky="e", padx=8)
-        self.dim_label = ttk.Label(self.statusbar, text="Canvas: 0x0", width=16, anchor="e")
-        self.dim_label.grid(row=0, column=2, sticky="e", padx=8)
-        self.zoom_label = ttk.Label(self.statusbar, text="Zoom: 4x", width=12, anchor="e")
-        self.zoom_label.grid(row=0, column=3, sticky="e", padx=8)
-        if self._pending_zoom is not None:
-            self.zoom_label.config(text=f"Zoom: {self._pending_zoom}x")
-            self._pending_zoom = None
-
-    # ---------------- Update handlers ----------------
     def _update_status(self, text):
         self.status_label.config(text=f"Status: {text}")
 
@@ -468,8 +1226,7 @@ class MainWindow(tk.Tk):
             comp = None
         if comp is not None:
             sz = comp.width * comp.height * 4
-            # Can be added to a tooltip if desired
-        # else: keep quiet
+            _ = human_readable_size(sz)
 
     def _update_zoom_info(self, zoom):
         if hasattr(self, "zoom_label"):
@@ -482,7 +1239,6 @@ class MainWindow(tk.Tk):
         r, g, b, _ = self.current_color
         self.color_display.config(bg=f"#{r:02x}{g:02x}{b:02x}")
 
-    # ---------------- Toolbar bridges ----------------
     def _select_tool(self, tool: ToolType):
         self.current_tool = tool
         self._update_tool_visuals()
@@ -490,18 +1246,14 @@ class MainWindow(tk.Tk):
             self.canvas_editor.set_tool(tool)
 
     def _pick_color(self, event=None):
-        from tkinter import colorchooser
-        color = colorchooser.askcolor(color=f"#{self.current_color[0]:02x}{self.current_color[1]:02x}{self.current_color[2]:02x}")
+        color = colorchooser.askcolor(
+            color=f"#{self.current_color[0]:02x}{self.current_color[1]:02x}{self.current_color[2]:02x}"
+        )
         if color and color[0]:
             r, g, b = [int(c) for c in color[0]]
-            
-            # CRITICAL: Read the actual position of the alpha slider right now
             current_alpha = int(self.alpha_var.get())
-            
             self.current_color = (r, g, b, current_alpha)
             self.color_display.config(bg=f"#{r:02x}{g:02x}{b:02x}")
-            
-            # Pass the color with the slider's alpha retained
             self.canvas_editor.set_color(self.current_color)
 
     def _on_alpha_change(self, alpha: int):
@@ -516,15 +1268,13 @@ class MainWindow(tk.Tk):
     def _on_shape_fill_toggle(self):
         self.canvas_editor.set_shape_fill(self.shape_fill_var.get())
 
-    # ---------------- Menu actions ----------------
     def _toggle_grid(self, event=None):
-        # 1. Flip the boolean flag on the canvas editor
         new_state = not self.canvas_editor.show_grid
         self.canvas_editor.set_grid(new_state)
-        
-        # 2. Force the canvas to redraw right now
         self.canvas_editor._refresh_display()
-        
+        if hasattr(self, "grid_var"):
+            self.grid_var.set(new_state)
+
         if new_state:
             self._update_status("Grid enabled (Requires Zoom >= 4x to display)")
         else:
@@ -533,7 +1283,7 @@ class MainWindow(tk.Tk):
     def _about(self):
         messagebox.showinfo(
             "About",
-            "Mr5niper's Pyicon Editor and Creator v1.2.1.0\n"
+            "Mr5niper's Pyicon Editor and Creator v1.3.0.0\n"
             "\n"
             "Created by Mr5niper\n"
             "© 2026 Mr5niper5oft\n"
@@ -543,7 +1293,7 @@ class MainWindow(tk.Tk):
             "Python / tkinter, Pillow\n"
             "\n"
             "GitHub:\n"
-            "https://github.com/Mr5niper/Pyicon-Editor"
+            "https://github.com/Mr5niper/Pyicon-Editor\n"
             "\n"
             "Release:\n"
             "https://github.com/Mr5niper/Pyicon-Editor/releases\n"
@@ -552,6 +1302,13 @@ class MainWindow(tk.Tk):
     def _set_theme(self, theme: str):
         self.theme = theme
         self._apply_theme(theme)
+
+        # Force two repaint passes so stale dark styling is overwritten
+        self.update_idletasks()
+        self._apply_widget_theme()
+        self.update_idletasks()
+        self.after(10, self._force_full_theme_refresh)
+
         self.config_mgr.theme = theme
         self.config_mgr.save()
 
@@ -561,19 +1318,8 @@ class MainWindow(tk.Tk):
         self.config_mgr.save()
         self.destroy()
 
-    # ---------------- Recent files ----------------
     def _refresh_recent_menu(self):
-        # Menubar may call this before canvas exists; safe anyway
-        if not hasattr(self, "recent_menu"):
-            return
-        self.recent_menu.delete(0, "end")
-        if not self.recent_files:
-            self.recent_menu.add_command(label="(Empty)", state="disabled")
-            return
-        for path_str in self.recent_files:
-            p = Path(path_str)
-            label = p.name if len(p.name) < 48 else "..." + p.name[-45:]
-            self.recent_menu.add_command(label=label, command=lambda s=path_str: self._open_recent(s))
+        pass
 
     def _open_recent(self, path_str: str):
         p = Path(path_str)
@@ -592,7 +1338,6 @@ class MainWindow(tk.Tk):
         self.recent_files = self.recent_files[:5]
         self._refresh_recent_menu()
 
-    # ---------------- File ops ----------------
     def new_canvas(self):
         dialog = tk.Toplevel(self)
         dialog.title("New Canvas")
@@ -650,7 +1395,6 @@ class MainWindow(tk.Tk):
             messagebox.showerror("Error", f"Failed to save PNG:\n{e}")
 
     def export_ico(self):
-        # Use defaults suitable for Windows icons; the dialog will let user confirm and save.
         comp = self.canvas_editor.get_composite()
         if comp is None:
             messagebox.showinfo("No image", "Create or open an image first.")
@@ -666,28 +1410,24 @@ class MainWindow(tk.Tk):
             )
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export ICO:\n{e}")
-            
+
     def export_icns(self):
         comp = self.canvas_editor.get_composite()
         if comp is None:
             messagebox.showinfo("No image", "Create or open an image first.")
             return
         try:
-            # Standard macOS icon sizes
             sizes = [1024, 512, 256, 128, 64, 32, 16]
-            # Ensure export_icns_dialog is imported at the top of main_window.py
             export_icns_dialog(self, comp, sizes, "Lanczos", True)
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export ICNS:\n{e}")
-            
-    # -------------------- Undo/Redo --------------------
+
     def undo(self):
         self.canvas_editor.undo()
 
     def redo(self):
         self.canvas_editor.redo()
 
-    # -------------------- Selection/Zoom wrappers --------------------
     def _deselect(self):
         self.canvas_editor.clear_selection()
 
@@ -703,7 +1443,6 @@ class MainWindow(tk.Tk):
     def _set_zoom_from_scale(self, v):
         self.canvas_editor.set_zoom(v)
 
-    # -------------------- Quick actions --------------------
     def _quick_invert(self):
         self.canvas_editor.quick_invert()
 
@@ -719,30 +1458,23 @@ class MainWindow(tk.Tk):
     def _quick_trim(self):
         self.canvas_editor.quick_trim_transparent()
 
-    # -------------------- Layers UI (no visible layers widget in compact toolbar;
-    # keep a no-op refresh for safety if callbacks fire) --------------------
     def _refresh_layers_ui(self):
-        # No layers combobox in the compact toolbar layout; ignore.
         pass
 
     def _bind_shortcuts(self):
-        # File operations
         self.bind("<Control-n>", lambda event: self.new_canvas())
         self.bind("<Control-o>", lambda event: self.open_image())
         self.bind("<Control-s>", lambda event: self.save_png())
         self.bind("<Control-e>", lambda event: self.export_ico())
-        
-        # Edit operations
+
         self.bind("<Control-z>", lambda event: self.undo())
         self.bind("<Control-y>", lambda event: self.redo())
         self.bind("<Escape>", lambda event: self._deselect())
         self.bind("<Delete>", lambda event: self.canvas_editor.delete_selection())
-        
-        # View operations
+
         self.bind("<f>", lambda event: self._fit_to_window())
         self.bind("<F>", lambda event: self._fit_to_window())
-        
-        # Tool selection
+
         self.bind("<s>", lambda event: self._select_tool(ToolType.SELECTION))
         self.bind("<S>", lambda event: self._select_tool(ToolType.SELECTION))
         self.bind("<v>", lambda event: self._select_tool(ToolType.MOVE))
@@ -765,6 +1497,7 @@ class MainWindow(tk.Tk):
         self.bind("<R>", lambda event: self._select_tool(ToolType.SHAPE_RECT))
         self.bind("<c>", lambda event: self._select_tool(ToolType.SHAPE_ELLIPSE))
         self.bind("<C>", lambda event: self._select_tool(ToolType.SHAPE_ELLIPSE))
+
 
 def run_app():
     app = MainWindow()
