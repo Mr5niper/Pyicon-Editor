@@ -1456,13 +1456,13 @@ class MainWindow(tk.Tk):
         pass
 
     def _bind_shortcuts(self):
-        self.bind("<Control-n>", lambda event: self.new_canvas())
-        self.bind("<Control-o>", lambda event: self.open_image())
-        self.bind("<Control-s>", lambda event: self.save_png())
-        self.bind("<Control-e>", lambda event: self.export_ico())
+        self.bind("<Control-n>", lambda event: self.new_canvas() or "break")
+        self.bind("<Control-o>", lambda event: self.open_image() or "break")
+        self.bind("<Control-s>", lambda event: self.save_png() or "break")
+        self.bind("<Control-e>", lambda event: self.export_ico() or "break")
 
-        self.bind("<Control-z>", lambda event: self.undo())
-        self.bind("<Control-y>", lambda event: self.redo())
+        self.bind("<Control-z>", lambda event: self.undo() or "break")
+        self.bind("<Control-y>", lambda event: self.redo() or "break")
         self.bind("<Escape>", lambda event: self._deselect())
         self.bind("<Delete>", lambda event: self.canvas_editor.delete_selection())
 
