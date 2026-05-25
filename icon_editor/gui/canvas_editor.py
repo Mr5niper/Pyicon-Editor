@@ -276,19 +276,21 @@ class CanvasEditor(ttk.Frame):
         bbox = self.canvas.bbox("all")
         if not bbox:
             return
+
         x0, y0, x1, y1 = bbox
         w = x1 - x0
         h = y1 - y0
         cw = self.canvas.winfo_width()
         ch = self.canvas.winfo_height()
-        tx = max(0, (w - cw) // 2)
-        ty = max(0, (h - ch) // 2)
-        if w > cw:
-            self.canvas.xview_moveto(tx / w)
+
+        # If the image is smaller than the viewport, always pin to top-left
+        if w <= cw:
+            self.canvas.xview_moveto(0)
         else:
             self.canvas.xview_moveto(0)
-        if h > ch:
-            self.canvas.yview_moveto(ty / h)
+
+        if h <= ch:
+            self.canvas.yview_moveto(0)
         else:
             self.canvas.yview_moveto(0)
 
@@ -331,6 +333,10 @@ class CanvasEditor(ttk.Frame):
     def set_shape_fill(self, filled: bool):
         self.shape_fill = bool(filled)
         self.on_status(f"Shape fill: {'On' if self.shape_fill else 'Off'}")
+
+    def set_fill_tolerance(self, tolerance: int):
+        self.fill_tolerance = clamp(tolerance, 0, 255)
+        self.on_status(f"Fill tolerance: {self.fill_tolerance}")
 
     # ---------- Quick Actions ----------
     def quick_invert(self):
@@ -808,7 +814,24 @@ class CanvasEditor(ttk.Frame):
         composed = self._compose_display_image()
         if composed is None:
             return
+
         self._display_image = ImageTk.PhotoImage(composed)
         self.canvas.delete("all")
-        self.canvas.config(scrollregion=(0, 0, composed.width, composed.height))
+
+        self.canvas.update_idletasks()
+        cw = max(1, self.canvas.winfo_width())
+        ch = max(1, self.canvas.winfo_height())
+
+        # If the rendered image is smaller than the viewport, make the scrollregion
+        # at least the size of the viewport so the image stays pinned at top-left
+        sr_w = max(composed.width, cw)
+        sr_h = max(composed.height, ch)
+
+        self.canvas.config(scrollregion=(0, 0, sr_w, sr_h))
         self.canvas.create_image(0, 0, image=self._display_image, anchor="nw")
+
+        # Always pin to top-left when the image is smaller than the viewport
+        if composed.width <= cw:
+            self.canvas.xview_moveto(0)
+        if composed.height <= ch:
+            self.canvas.yview_moveto(0)
