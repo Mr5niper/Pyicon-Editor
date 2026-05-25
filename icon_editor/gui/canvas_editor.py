@@ -15,7 +15,7 @@ class CanvasEditor(ttk.Frame):
         on_size_change=None,
         on_zoom_change=None,
         on_layers_changed=None,
-        on_color_ui=None,  # NEW: callback to sync UI color (e.g., eyedropper)
+        on_color_ui=None,
     ):
         super().__init__(parent)
         self.parent = parent
@@ -28,7 +28,6 @@ class CanvasEditor(ttk.Frame):
 
         self._bg_cache = None
 
-        # Layers are created by new_blank/load_image
         self.layers: list[Image.Image] = []
         self.layer_visible: list[bool] = []
         self.layer_names: list[str] = []
@@ -38,6 +37,7 @@ class CanvasEditor(ttk.Frame):
         self._composite_dirty = True
 
         self._display_image = None
+        self._canvas_image_id = None
         self.zoom = 4
         self.show_grid = False
 
@@ -71,6 +71,7 @@ class CanvasEditor(ttk.Frame):
         # NOTE: Do not call new_blank here; main_window triggers it after widget exists.
 
     # ---------- Size helpers ----------
+
     def width(self):
         return self.layers[0].width if self.layers else 0
 
@@ -166,7 +167,6 @@ class CanvasEditor(ttk.Frame):
 
     # ---------- UI ----------
     def _build_ui(self):
-        # Configure row 0 for the canvas (stretches) and row 1 for the scrollbar (fixed size)
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=0)
         self.rowconfigure(0, weight=1)
@@ -175,11 +175,11 @@ class CanvasEditor(ttk.Frame):
         self.canvas = tk.Canvas(self, bg="#3a3a3a", highlightthickness=0, cursor="cross")
         self.canvas.grid(row=0, column=0, sticky="nsew")
 
+        # Restore the missing scrollbars
         self.hbar = ttk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
         self.vbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(xscrollcommand=self.hbar.set, yscrollcommand=self.vbar.set)
         
-        # Explicit grid targeting to lock them into the viewport structure
         self.hbar.grid(row=1, column=0, sticky="ew")
         self.vbar.grid(row=0, column=1, sticky="ns")
 
@@ -200,8 +200,18 @@ class CanvasEditor(ttk.Frame):
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
 
         self.canvas.bind("<MouseWheel>", self._on_mouse_wheel)
+        self.canvas.bind("<Shift-MouseWheel>", self._on_mouse_wheel)
         self.canvas.bind("<Button-4>", self._on_mouse_wheel)
         self.canvas.bind("<Button-5>", self._on_mouse_wheel)
+        self.canvas.bind("<Shift-Button-4>", self._on_mouse_wheel)
+        self.canvas.bind("<Shift-Button-5>", self._on_mouse_wheel)
+        
+        # Safely bind Linux horizontal scroll buttons (Windows will ignore this without crashing)
+        try:
+            self.canvas.bind("<Button-6>", self._on_mouse_wheel)
+            self.canvas.bind("<Button-7>", self._on_mouse_wheel)
+        except tk.TclError:
+            pass
 
         self._first_fit_done = False
         self.canvas.bind("<Configure>", self._on_canvas_configure, add="+")
@@ -578,27 +588,67 @@ class CanvasEditor(ttk.Frame):
 
     def _on_mouse_wheel(self, event):
         ctrl = (event.state & 0x4) != 0
+        shift = (event.state & 0x1) != 0
+
         if not ctrl:
-            if hasattr(event, "delta") and event.delta != 0:
-                dy = -1 if event.delta > 0 else 1
-                self.canvas.yview_scroll(dy, "units")
+            # Check if Shift is held OR if horizontal scroll buttons (6/7) are triggered
+            if shift or getattr(event, "num", 0) in (6, 7):
+                if hasattr(event, "delta") and event.delta != 0:
+                    dx = -1 if event.delta > 0 else 1
+                    self.canvas.xview_scroll(dx, "units")
+                else:
+                    if getattr(event, "num", 0) in (4, 6):
+                        self.canvas.xview_scroll(-1, "units")
+                    elif getattr(event, "num", 0) in (5, 7):
+                        self.canvas.xview_scroll(1, "units")
             else:
-                if event.num == 4:
-                    self.canvas.yview_scroll(-1, "units")
-                elif event.num == 5:
-                    self.canvas.yview_scroll(1, "units")
+                if hasattr(event, "delta") and event.delta != 0:
+                    dy = -1 if event.delta > 0 else 1
+                    self.canvas.yview_scroll(dy, "units")
+                else:
+                    if getattr(event, "num", 0) == 4:
+                        self.canvas.yview_scroll(-1, "units")
+                    elif getattr(event, "num", 0) == 5:
+                        self.canvas.yview_scroll(1, "units")
             return
+            
         delta = 0
         if hasattr(event, "delta") and event.delta != 0:
             delta = 1 if event.delta > 0 else -1
         else:
-            if event.num == 4:
+            if getattr(event, "num", 0) == 4:
                 delta = 1
-            elif event.num == 5:
+            elif getattr(event, "num", 0) == 5:
                 delta = -1
+                
         if delta != 0:
             new_zoom = clamp(self.zoom + delta, 1, 16)
-            self.set_zoom(new_zoom)
+            if new_zoom != self.zoom:
+                cx = self.canvas.canvasx(event.x)
+                cy = self.canvas.canvasy(event.y)
+                old_zoom = self.zoom
+                
+                self.set_zoom(new_zoom)
+                
+                scale = new_zoom / old_zoom
+                new_cx = cx * scale
+                new_cy = cy * scale
+                
+                # Run the view adjustment 1ms later so Tkinter has time to process the new boundaries smoothly
+                def adjust_view():
+                    sr = self.canvas.bbox("all")
+                    if sr:
+                        sr_w = max(1, sr[2] - sr[0])
+                        sr_h = max(1, sr[3] - sr[1])
+                        cw = self.canvas.winfo_width()
+                        ch = self.canvas.winfo_height()
+                        
+                        if sr_w > cw:
+                            self.canvas.xview_moveto((new_cx - event.x) / sr_w)
+                        if sr_h > ch:
+                            self.canvas.yview_moveto((new_cy - event.y) / sr_h)
+                            
+                self.canvas.after(1, adjust_view)
 
     # ---------- Drawing helpers ----------
     def _draw_point(self, x, y, color):
@@ -816,21 +866,24 @@ class CanvasEditor(ttk.Frame):
             return
 
         self._display_image = ImageTk.PhotoImage(composed)
-        self.canvas.delete("all")
 
-        self.canvas.update_idletasks()
+        # DO NOT call self.canvas.delete("all") here
+        # DO NOT call self.canvas.update_idletasks() here
+
         cw = max(1, self.canvas.winfo_width())
         ch = max(1, self.canvas.winfo_height())
 
-        # If the rendered image is smaller than the viewport, make the scrollregion
-        # at least the size of the viewport so the image stays pinned at top-left
         sr_w = max(composed.width, cw)
         sr_h = max(composed.height, ch)
 
         self.canvas.config(scrollregion=(0, 0, sr_w, sr_h))
-        self.canvas.create_image(0, 0, image=self._display_image, anchor="nw")
 
-        # Always pin to top-left when the image is smaller than the viewport
+        # Re-use the existing canvas image instead of destroying it
+        if getattr(self, "_canvas_image_id", None) is None:
+            self._canvas_image_id = self.canvas.create_image(0, 0, image=self._display_image, anchor="nw")
+        else:
+            self.canvas.itemconfig(self._canvas_image_id, image=self._display_image)
+
         if composed.width <= cw:
             self.canvas.xview_moveto(0)
         if composed.height <= ch:
