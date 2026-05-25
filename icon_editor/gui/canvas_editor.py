@@ -64,9 +64,11 @@ class CanvasEditor(ttk.Frame):
         # Shapes
         self.shape_start = None
         self.preview_image = None
-
+        self.clipboard_image = None
+        
         self.history = UndoRedoStack(limit=50)
-
+        self.is_unsaved = False
+        
         self._build_ui()
         # NOTE: Do not call new_blank here; main_window triggers it after widget exists.
 
@@ -81,6 +83,7 @@ class CanvasEditor(ttk.Frame):
     # ---------- Composite ----------
     def _mark_dirty(self):
         self._composite_dirty = True
+        self.is_unsaved = True
 
     def get_composite(self):
         if not self.layers:
@@ -236,6 +239,7 @@ class CanvasEditor(ttk.Frame):
         self.on_status(f"New {w}x{h} canvas")
         self.on_size_change(w, h)
         self.on_layers_changed()
+        self.is_unsaved = False
 
     def load_image(self, image):
         img = image.convert("RGBA")
@@ -251,6 +255,7 @@ class CanvasEditor(ttk.Frame):
         self.on_status("Image loaded")
         self.on_size_change(img.width, img.height)
         self.on_layers_changed()
+        self.is_unsaved = False
 
     def _reset_selection(self):
         self.sel_active = False
@@ -406,6 +411,24 @@ class CanvasEditor(ttk.Frame):
         self.on_status("Trimmed transparent borders")
 
     # ---------- Selection ----------
+    
+    def select_all(self):
+        if not self.layers:
+            return False
+            
+        # If we are dragging a floating selection, commit it to the canvas first
+        if self.sel_floating is not None:
+            self._commit_floating_selection()
+            
+        # Set the selection rectangle to the full dimensions of the canvas
+        self.sel_active = True
+        self.sel_start = (0, 0)
+        self.sel_rect = (0, 0, self.width(), self.height())
+        
+        self._refresh_display()
+        self.on_status("Selected all")
+        return True
+    
     def clear_selection(self):
         if self.sel_floating is not None:
             self._commit_floating_selection()
@@ -433,6 +456,56 @@ class CanvasEditor(ttk.Frame):
         self._mark_dirty()
         self._refresh_display()
         self.on_status("Selection cleared to transparency")
+
+    def copy_selection(self):
+        if not self.layers:
+            return False
+            
+        if self.sel_floating is not None:
+            # Copy the image we are currently dragging around
+            self.clipboard_image = self.sel_floating.copy()
+            self.on_status("Selection copied")
+            return True
+        elif self.sel_active and self.sel_rect is not None:
+            # Crop the selected area directly from the active layer
+            x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
+            self.clipboard_image = self.layers[self.active_layer].crop((x0, y0, x1, y1))
+            self.on_status("Selection copied")
+            return True
+        else:
+            self.on_status("Nothing selected to copy")
+            return False
+
+    def paste_selection(self):
+        if not getattr(self, "clipboard_image", None):
+            self.on_status("Clipboard is empty")
+            return False
+            
+        # If we are already dragging something else, commit it to the canvas first
+        if self.sel_floating is not None:
+            self._commit_floating_selection()
+            
+        self._push_state()
+        
+        # Load the clipboard image as a new floating selection
+        self.sel_floating = self.clipboard_image.copy()
+        
+        # Calculate coordinates to paste it near the top-left of the user's current scroll view
+        x0 = int(self.canvas.canvasx(0) / self.zoom)
+        y0 = int(self.canvas.canvasy(0) / self.zoom)
+        
+        self.sel_offset = (x0, y0)
+        x1 = x0 + self.sel_floating.width
+        y1 = y0 + self.sel_floating.height
+        
+        self.sel_rect = (x0, y0, x1, y1)
+        self.sel_active = True
+        self.tool = ToolType.MOVE
+        
+        self._mark_dirty()
+        self._refresh_display()
+        self.on_status("Pasted selection")
+        return True
 
     # ---------- Events ----------
     def _on_space_down(self, event):
