@@ -12,8 +12,19 @@ A full-featured, cross-platform icon creator and editor written in Python. Creat
    The application features a streamlined, single-row ribbon toolbar at the top of the window, divided into logical groups from left to right.
 <br>
 <br>
-<img width="1562" height="964" alt="image" src="https://github.com/user-attachments/assets/a7d6028f-9776-4e71-8c0c-e068bab48662" />
+**System Theme:**
 <br>
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/e36a2239-f600-416d-b0a9-a2a91e562204" />
+<br>
+<br>
+**Light Theme:**
+<br>
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/9191ae6e-bc5c-4870-ad24-2e1970dbc5d3" />
+<br>
+<br>
+**Dark Theme:**
+<br>
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/87fcddc3-cacf-4c65-8356-b0c590d594d6" />
 <br>
 ### 1. File Operations
 - **Open**: Load an existing image (`PNG`, `JPG`, `BMP`, `GIF`, `TIFF`, `WebP`, `ICO`)
