@@ -1050,6 +1050,26 @@ class MainWindow(tk.Tk):
         icon_fg = (240, 240, 240, 255) if (self.theme or "System").lower() == "dark" else (0, 0, 0, 255)
         icons = IconFactory(size=22, fg=icon_fg)
 
+        # ADD THIS: Helper function to calculate slider value based on pointer X coordinate
+        def make_slider_snapable(scale_widget):
+            def jump_to_pointer(event):
+                val_min = float(scale_widget.cget('from'))
+                val_max = float(scale_widget.cget('to'))
+                width = scale_widget.winfo_width()
+                
+                if width > 0:
+                    # Keep the X coordinate safely within the bounds of the widget
+                    x = max(0, min(event.x, width))
+                    fraction = x / width
+                    new_val = val_min + (fraction * (val_max - val_min))
+                    scale_widget.set(new_val)
+                    
+                # Prevent Tkinter's default "page jumping" behavior from fighting our smooth snap
+                return "break"
+                
+            scale_widget.bind("<Button-1>", jump_to_pointer)
+            scale_widget.bind("<B1-Motion>", jump_to_pointer)
+
         def add_btn(parent, icon_name, cmd, tip):
             img = icons.get(icon_name)
             c = self._theme_colors or {}
@@ -1133,6 +1153,7 @@ class MainWindow(tk.Tk):
         )
         size_scale.set(5)
         size_scale.pack(side="left", fill="x", expand=True, padx=2)
+        make_slider_snapable(size_scale) 
         self._scales.append(size_scale)
         Tooltip(size_scale, "Brush Size")
 
@@ -1164,6 +1185,7 @@ class MainWindow(tk.Tk):
         )
         alpha_scale.set(255)
         alpha_scale.pack(side="left", fill="x", expand=True, padx=2)
+        make_slider_snapable(alpha_scale)
         self._scales.append(alpha_scale)
         Tooltip(alpha_scale, "Alpha (opacity 0–255)")
         ttk.Label(color_grp, text="Tol").pack(side="left", padx=(10, 4))
@@ -1177,6 +1199,7 @@ class MainWindow(tk.Tk):
         )
         tol_scale.set(0)
         tol_scale.pack(side="left", fill="x", expand=True, padx=2)
+        make_slider_snapable(tol_scale) 
         self._scales.append(tol_scale)
         Tooltip(tol_scale, "Fill Tolerance")
 
@@ -1199,6 +1222,7 @@ class MainWindow(tk.Tk):
         )
         zoom_scale.set(4)
         zoom_scale.pack(side="left", fill="x", expand=True, padx=2)
+        make_slider_snapable(zoom_scale)
         self._scales.append(zoom_scale)
         Tooltip(zoom_scale, "Zoom 1x–16x")
 
