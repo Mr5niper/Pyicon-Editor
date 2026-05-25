@@ -813,12 +813,16 @@ class MainWindow(tk.Tk):
                 {"label": "Undo (Ctrl+Z)", "command": self.undo},
                 {"label": "Redo (Ctrl+Y)", "command": self.redo},
                 "---",
+                {"label": "Copy (Ctrl+C)", "command": self.copy_selection},
+                {"label": "Paste (Ctrl+V)", "command": self.paste_selection},
+                "---",
                 {"label": "Invert Colors", "command": self._quick_invert},
                 {"label": "Grayscale", "command": self._quick_grayscale},
                 {"label": "Flip Horizontal", "command": self._quick_flip_h},
                 {"label": "Flip Vertical", "command": self._quick_flip_v},
                 {"label": "Trim Transparent", "command": self._quick_trim},
                 "---",
+                {"label": "Select All (Ctrl+A)", "command": self.select_all},
                 {"label": "Deselect (Esc)", "command": self._deselect},
             ]
 
@@ -1331,6 +1335,19 @@ class MainWindow(tk.Tk):
         self.config_mgr.save()
 
     def _on_exit(self):
+        if getattr(self, "canvas_editor", None) and getattr(self.canvas_editor, "is_unsaved", False):
+            resp = messagebox.askyesnocancel(
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save before exiting?"
+            )
+            if resp is True:
+                self.save_png()
+                # If they cancelled the save dialog, abort the exit
+                if self.canvas_editor.is_unsaved:
+                    return
+            elif resp is None:
+                return
+
         self.config_mgr.recent_files = self.recent_files[:5]
         self.config_mgr.theme = self.theme
         self.config_mgr.save()
@@ -1357,6 +1374,20 @@ class MainWindow(tk.Tk):
         self._refresh_recent_menu()
 
     def new_canvas(self):
+        # Check for unsaved changes before opening the dialog
+        if getattr(self, "canvas_editor", None) and getattr(self.canvas_editor, "is_unsaved", False):
+            resp = messagebox.askyesnocancel(
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save before creating a new canvas?"
+            )
+            if resp is True:
+                self.save_png()
+                # If they cancelled the save dialog, abort
+                if getattr(self.canvas_editor, "is_unsaved", False):
+                    return
+            elif resp is None:
+                return
+
         dialog = tk.Toplevel(self)
         dialog.title("New Canvas")
         dialog.transient(self)
@@ -1381,6 +1412,20 @@ class MainWindow(tk.Tk):
         self.wait_window(dialog)
 
     def _open_path(self, p: Path):
+        # Check for unsaved changes before loading a new image
+        if getattr(self, "canvas_editor", None) and getattr(self.canvas_editor, "is_unsaved", False):
+            resp = messagebox.askyesnocancel(
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save before opening another file?"
+            )
+            if resp is True:
+                self.save_png()
+                # If they cancelled the save dialog, abort
+                if getattr(self.canvas_editor, "is_unsaved", False):
+                    return
+            elif resp is None:
+                return
+
         try:
             img = load_image_with_alpha(p, max_edit_dimension=3072)
         except Exception as e:
@@ -1408,6 +1453,7 @@ class MainWindow(tk.Tk):
             return
         try:
             save_png(comp, out)
+            self.canvas_editor.is_unsaved = False            
             self._update_status(f"Saved PNG: {Path(out).name}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save PNG:\n{e}")
@@ -1445,6 +1491,18 @@ class MainWindow(tk.Tk):
 
     def redo(self):
         self.canvas_editor.redo()
+
+    def copy_selection(self):
+        self.canvas_editor.copy_selection()
+        
+    def paste_selection(self):
+        # If the paste is successful, automatically switch the UI to the Move tool
+        if self.canvas_editor.paste_selection():
+            self._select_tool(ToolType.MOVE)
+
+    def select_all(self):
+        if self.canvas_editor.select_all():
+            self._select_tool(ToolType.SELECTION)
 
     def _deselect(self):
         self.canvas_editor.clear_selection()
@@ -1487,6 +1545,11 @@ class MainWindow(tk.Tk):
 
         self.bind("<Control-z>", lambda event: self.undo() or "break")
         self.bind("<Control-y>", lambda event: self.redo() or "break")
+        
+        self.bind("<Control-c>", lambda event: self.copy_selection() or "break")
+        self.bind("<Control-v>", lambda event: self.paste_selection() or "break")
+        
+        self.bind("<Control-a>", lambda event: self.select_all() or "break")
         self.bind("<Escape>", lambda event: self._deselect())
         self.bind("<Delete>", lambda event: self.canvas_editor.delete_selection())
 
