@@ -482,7 +482,11 @@ class CanvasEditor(ttk.Frame):
         if not (0 <= ix < self.width() and 0 <= iy < self.height()):
             return
 
-        self._push_state()
+        # REMOVED self._push_state() from here
+        
+        # Track that a drawing action has started (excluding tools that don't draw)
+        if self.tool not in (ToolType.TEXT, ToolType.EYEDROPPER):
+            self.is_drawing = True
 
         if self.tool == ToolType.PENCIL:
             self._draw_point(ix, iy, self.color)
@@ -583,6 +587,12 @@ class CanvasEditor(ttk.Frame):
             self._commit_shape(self.shape_start, self.last_pos)
             self.shape_start = None
             self.preview_image = None
+            
+        # ADD THIS BLOCK to save the state AFTER the stroke is finished
+        if getattr(self, "is_drawing", False):
+            self._push_state()
+            self.is_drawing = False
+            
         self._mark_dirty()
         self._refresh_display()
 
