@@ -430,6 +430,12 @@ class MainWindow(tk.Tk):
                 self.configure(bg=bg)
                 for elem in ["TFrame", "TLabelframe", "TLabelframe.Label", "TLabel", "TCheckbutton", "TButton", "TMenubutton"]:
                     self.style.configure(elem, background=bg, foreground="#111")
+                # reset the checkbutton hover state in light mode
+                self.style.map(
+                    "TCheckbutton",
+                    background=[("active", bg)],
+                    foreground=[("active", "#111")]
+                )                
                 self.style.configure("TEntry", fieldbackground="#ffffff", foreground="#111")
                 self.style.configure(
                     "Horizontal.TScale",
@@ -871,13 +877,6 @@ class MainWindow(tk.Tk):
             if hasattr(self, "statusbar"):
                 self.statusbar.update_idletasks()
 
-            if hasattr(self, "canvas_editor") and self.canvas_editor is not None:
-                try:
-                    self.canvas_editor._refresh_display()
-                    self.canvas_editor.update_idletasks()
-                except Exception:
-                    pass
-
             self.update()
         except Exception as e:
             print(f"Theme refresh failed: {e}")
@@ -892,7 +891,6 @@ class MainWindow(tk.Tk):
         text = colors.get("text", "#111111")
         border = colors.get("border", "#b8b8b8")
         accent = colors.get("accent", "#4a90ff")
-        #canvas_bg = colors.get("canvas_bg", "#d9d9d9")
         status_bg = colors.get("status_bg", bg)
 
         try:
@@ -1196,6 +1194,7 @@ class MainWindow(tk.Tk):
             from_=1,
             to=16,
             orient="horizontal",
+            variable=self.zoom_var,  # <--- ADD THIS LINE HERE
             command=lambda v: self._set_zoom_from_scale(int(float(v)))
         )
         zoom_scale.set(4)
@@ -1233,7 +1232,9 @@ class MainWindow(tk.Tk):
             self.zoom_label.config(text=f"Zoom: {zoom}x")
         else:
             self._pending_zoom = zoom
-
+        if hasattr(self, "zoom_var"):
+            self.zoom_var.set(zoom)
+            
     def _set_ui_color(self, rgba):
         self.current_color = tuple(rgba)
         r, g, b, _ = self.current_color
@@ -1271,7 +1272,7 @@ class MainWindow(tk.Tk):
     def _toggle_grid(self, event=None):
         new_state = not self.canvas_editor.show_grid
         self.canvas_editor.set_grid(new_state)
-        self.canvas_editor._refresh_display()
+
         if hasattr(self, "grid_var"):
             self.grid_var.set(new_state)
 
@@ -1302,13 +1303,6 @@ class MainWindow(tk.Tk):
     def _set_theme(self, theme: str):
         self.theme = theme
         self._apply_theme(theme)
-
-        # Force two repaint passes so stale dark styling is overwritten
-        self.update_idletasks()
-        self._apply_widget_theme()
-        self.update_idletasks()
-        self.after(10, self._force_full_theme_refresh)
-
         self.config_mgr.theme = theme
         self.config_mgr.save()
 
