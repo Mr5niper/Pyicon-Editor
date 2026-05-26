@@ -218,7 +218,7 @@ class IconFactory:
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Mr5niper's Pyicon Editor and Creator v1.4.0.0")
+        self.title("Mr5niper's Pyicon Editor and Creator v1.4.1.0")
         self.geometry("1560x910+20+20")
         self.minsize(1350, 720)
 
@@ -1312,7 +1312,7 @@ class MainWindow(tk.Tk):
     def _about(self):
         messagebox.showinfo(
             "About",
-            "Mr5niper's Pyicon Editor and Creator v1.4.0.0\n"
+            "Mr5niper's Pyicon Editor and Creator v1.4.1.0\n"
             "\n"
             "Created by Mr5niper\n"
             "© 2026 Mr5niper5oft\n"
@@ -1324,7 +1324,7 @@ class MainWindow(tk.Tk):
             "-tkinter-\n"
             "https://docs.python.org/3/library/tkinter.html\n"
             "-Pillow-\n"
-            "https://www.google.com/search?q=https://python-pillow.org/\n"
+            "https://pillow.readthedocs.io/\n"
             "\n"
             "GitHub:\n"
             "https://github.com/Mr5niper/Pyicon-Editor\n"
