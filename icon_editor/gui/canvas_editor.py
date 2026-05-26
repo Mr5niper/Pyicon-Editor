@@ -457,26 +457,110 @@ class CanvasEditor(ttk.Frame):
         self._refresh_display()
         self.on_status("Selection cleared to transparency")
 
+    def _copy_to_os_clipboard(self, image: Image.Image):
+        """Helper to push PIL images to the Windows OS clipboard in DIB and PNG formats."""
+        import os
+        if os.name != 'nt':
+            return
+            
+        import ctypes
+        from ctypes import wintypes
+        from io import BytesIO
+        
+        try:
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            
+            # FIX: Explicitly define 64-bit handle types so ctypes doesn't truncate the memory pointers!
+            user32.OpenClipboard.argtypes = [wintypes.HWND]
+            user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+            user32.SetClipboardData.restype = wintypes.HANDLE
+            
+            kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+            kernel32.GlobalAlloc.restype = wintypes.HANDLE
+            
+            kernel32.GlobalLock.argtypes = [wintypes.HANDLE]
+            kernel32.GlobalLock.restype = wintypes.LPVOID
+            
+            kernel32.GlobalUnlock.argtypes = [wintypes.HANDLE]
+            
+            user32.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
+            user32.RegisterClipboardFormatW.restype = wintypes.UINT
+            
+            user32.OpenClipboard(0)
+            user32.EmptyClipboard()
+            
+            # 1. DIB Format (Fallback for older apps like classic MS Paint)
+            output_dib = BytesIO()
+            bg = Image.new("RGB", image.size, (255, 255, 255))
+            if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+                bg.paste(image, mask=image.convert("RGBA").split()[3])
+            else:
+                bg.paste(image)
+            bg.save(output_dib, "DIB")
+            data_dib = output_dib.getvalue()
+            
+            hMem_dib = kernel32.GlobalAlloc(0x0002, len(data_dib)) # GMEM_MOVEABLE
+            pMem_dib = kernel32.GlobalLock(hMem_dib)
+            ctypes.memmove(pMem_dib, data_dib, len(data_dib))
+            kernel32.GlobalUnlock(hMem_dib)
+            user32.SetClipboardData(8, hMem_dib) # CF_DIB = 8
+            
+            # 2. PNG Format (For modern apps like Discord/Photoshop to preserve alpha transparency)
+            png_format = user32.RegisterClipboardFormatW("PNG")
+            output_png = BytesIO()
+            image.save(output_png, "PNG")
+            data_png = output_png.getvalue()
+            
+            hMem_png = kernel32.GlobalAlloc(0x0002, len(data_png))
+            pMem_png = kernel32.GlobalLock(hMem_png)
+            ctypes.memmove(pMem_png, data_png, len(data_png))
+            kernel32.GlobalUnlock(hMem_png)
+            user32.SetClipboardData(png_format, hMem_png)
+            
+            user32.CloseClipboard()
+        except Exception as e:
+            print(f"OS Clipboard error: {e}")
+            try:
+                ctypes.windll.user32.CloseClipboard()
+            except Exception:
+                pass
+
     def copy_selection(self):
         if not self.layers:
             return False
             
         if self.sel_floating is not None:
-            # Copy the image we are currently dragging around
             self.clipboard_image = self.sel_floating.copy()
-            self.on_status("Selection copied")
+            self._copy_to_os_clipboard(self.clipboard_image)  # <-- Push to Windows
+            self.on_status("Selection copied to system clipboard")
             return True
         elif self.sel_active and self.sel_rect is not None:
-            # Crop the selected area directly from the active layer
             x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
             self.clipboard_image = self.layers[self.active_layer].crop((x0, y0, x1, y1))
-            self.on_status("Selection copied")
+            self._copy_to_os_clipboard(self.clipboard_image)  # <-- Push to Windows
+            self.on_status("Selection copied to system clipboard")
             return True
         else:
             self.on_status("Nothing selected to copy")
             return False
 
     def paste_selection(self):
+        # Try to intercept pixel data directly from the Windows OS clipboard first
+        from PIL import ImageGrab
+        try:
+            os_clip = ImageGrab.grabclipboard()
+            if isinstance(os_clip, Image.Image):
+                self.clipboard_image = os_clip.convert("RGBA")
+            # Bonus: If the user copied an image file from Windows Explorer, intercept the file path and open it
+            elif isinstance(os_clip, list) and len(os_clip) > 0 and isinstance(os_clip[0], str):
+                try:
+                    self.clipboard_image = Image.open(os_clip[0]).convert("RGBA")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         if not getattr(self, "clipboard_image", None):
             self.on_status("Clipboard is empty")
             return False
@@ -504,7 +588,7 @@ class CanvasEditor(ttk.Frame):
         
         self._mark_dirty()
         self._refresh_display()
-        self.on_status("Pasted selection")
+        self.on_status("Pasted selection from system clipboard")
         return True
 
     # ---------- Events ----------
