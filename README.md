@@ -27,7 +27,14 @@ A full-featured, cross-platform icon creator and editor written in Python. Creat
 <img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/87fcddc3-cacf-4c65-8356-b0c590d594d6" />
 <br>
 ### 1. File Operations
-- **Open**: Load an existing image (`PNG`, `JPG`, `BMP`, `GIF`, `TIFF`, `WebP`, `ICO`)
+- **Open**: Load an existing image (`PNG`, `JPG`, `BMP`, `GIF`, `TIFF`, `WebP`, `ICO`). Opening a Windows executable (`.exe`) or library (`.dll`) will spawn a visual selector allowing you to choose which embedded icon to extract.
+<br>
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**EXE/DLL Icon Selector:**
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img width="362" height="311" alt="image" src="https://github.com/user-attachments/assets/de9849fc-a39d-47a8-abf6-0bbf7d95cad7" />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+<br>
 - **Save**: Save the current composite canvas as a flat `PNG`
 - **Export ICO**: Export a multi-resolution Windows icon with preview
 - **Export ICNS**: Export a macOS icon using Pillow-based `.icns` export
@@ -63,7 +70,7 @@ Select a tool to interact with the main canvas. The active tool button appears d
 
 ### Top Menu Bar
 - **File**: New Canvas, Open Recent, Save, Export ICO, Export ICNS, Exit
-- **Edit**: Undo/Redo, Deselect, Quick Actions
+- **Edit**: Undo/Redo, Copy, Paste, Select All, Deselect, Quick Actions
 - **View**: Grid toggle, Light/Dark/System theme
 - **Help**: About
 
@@ -79,6 +86,9 @@ Select a tool to interact with the main canvas. The active tool button appears d
 ### Edit
 - **Undo**: `Ctrl+Z`
 - **Redo**: `Ctrl+Y`
+- **Copy**: `Ctrl+C`
+- **Paste**: `Ctrl+V`
+- **Select All**: `Ctrl+A`
 - **Clear Selection / Deselect / Commit Move**: `Esc`
 - **Delete Selected Area**: `Delete`
 
@@ -101,7 +111,8 @@ Select a tool to interact with the main canvas. The active tool button appears d
 
 The editor supports rectangular selection and moving selected pixels as a floating selection.
 
-- Draw a selection using the **Selection** tool
+- Draw a selection using the **Selection** tool (or use `Ctrl+A` to Select All)
+- Copy the selection using `Ctrl+C` and paste it as a new floating layer with `Ctrl+V`
 - Switch to the **Move** tool and drag inside the selected region to reposition it
 - The moved selection preview and the visible selection box stay aligned while dragging
 - Press `Esc` or switch to another tool to commit the moved selection back onto the active layer
@@ -138,6 +149,8 @@ The editor can open the following formats:
 - `.tiff`
 - `.webp`
 - `.ico`
+- `.exe` (Windows icon resource extraction)
+- `.dll` (Windows icon resource extraction)
 
 Loaded images are converted to RGBA automatically, and very large images may be downscaled for more responsive editing.
 
@@ -153,6 +166,7 @@ python icon_editor/main.py --cli --input path/to/image.png --output out/icon.ico
 ```
 
 ### Batch Export
+
 ```bash
 python icon_editor/main.py --cli --input-dir ./images --pattern "*.png" --out-dir ./out --sizes 16,32,48,256 --resample lanczos --export-pngs
 ```

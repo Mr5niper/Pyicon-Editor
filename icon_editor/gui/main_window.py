@@ -1428,6 +1428,9 @@ class MainWindow(tk.Tk):
 
         try:
             img = load_image_with_alpha(p, max_edit_dimension=3072)
+            # FIX: If img is None, the user hit 'X' on the icon popup. Silently abort.
+            if img is None:
+                return
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open image:\n{e}")
             return
