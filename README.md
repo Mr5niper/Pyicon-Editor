@@ -14,20 +14,26 @@ A full-featured, cross-platform icon creator and editor written in Python. Creat
 <br>
 **System Theme:**
 <br>
-<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/e36a2239-f600-416d-b0a9-a2a91e562204" />
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/49a2f8ef-5181-4360-ad24-8e990e26e762" />
 <br>
 <br>
 **Light Theme:**
 <br>
-<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/9191ae6e-bc5c-4870-ad24-2e1970dbc5d3" />
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/7b7299db-bc29-4357-9b72-4b632622f112" />
 <br>
 <br>
 **Dark Theme:**
 <br>
-<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/87fcddc3-cacf-4c65-8356-b0c590d594d6" />
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/b90271ca-51e4-4904-b294-f0ccf0f6e0e6" />
 <br>
 ### 1. File Operations
-- **Open**: Load an existing image (`PNG`, `JPG`, `BMP`, `GIF`, `TIFF`, `WebP`, `ICO`)
+- **Open**: Load an existing image (`PNG`, `JPG`, `BMP`, `GIF`, `TIFF`, `WebP`, `ICO`). Opening a Windows executable (`.exe`) or library (`.dll`) will spawn a visual selector allowing you to choose which embedded icon to extract.
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**EXE/DLL Icon Selector:**
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<img width="362" height="311" alt="image" src="https://github.com/user-attachments/assets/de9849fc-a39d-47a8-abf6-0bbf7d95cad7" />
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
+<br>
 - **Save**: Save the current composite canvas as a flat `PNG`
 - **Export ICO**: Export a multi-resolution Windows icon with preview
 - **Export ICNS**: Export a macOS icon using Pillow-based `.icns` export
@@ -63,7 +69,7 @@ Select a tool to interact with the main canvas. The active tool button appears d
 
 ### Top Menu Bar
 - **File**: New Canvas, Open Recent, Save, Export ICO, Export ICNS, Exit
-- **Edit**: Undo/Redo, Deselect, Quick Actions
+- **Edit**: Undo/Redo, Copy, Paste, Select All, Deselect, Quick Actions
 - **View**: Grid toggle, Light/Dark/System theme
 - **Help**: About
 
@@ -79,6 +85,9 @@ Select a tool to interact with the main canvas. The active tool button appears d
 ### Edit
 - **Undo**: `Ctrl+Z`
 - **Redo**: `Ctrl+Y`
+- **Copy**: `Ctrl+C`
+- **Paste**: `Ctrl+V`
+- **Select All**: `Ctrl+A`
 - **Clear Selection / Deselect / Commit Move**: `Esc`
 - **Delete Selected Area**: `Delete`
 
@@ -101,7 +110,8 @@ Select a tool to interact with the main canvas. The active tool button appears d
 
 The editor supports rectangular selection and moving selected pixels as a floating selection.
 
-- Draw a selection using the **Selection** tool
+- Draw a selection using the **Selection** tool (or use `Ctrl+A` to Select All)
+- Copy the selection using `Ctrl+C` and paste it as a new floating layer with `Ctrl+V`
 - Switch to the **Move** tool and drag inside the selected region to reposition it
 - The moved selection preview and the visible selection box stay aligned while dragging
 - Press `Esc` or switch to another tool to commit the moved selection back onto the active layer
@@ -138,6 +148,8 @@ The editor can open the following formats:
 - `.tiff`
 - `.webp`
 - `.ico`
+- `.exe` (Windows icon resource extraction)
+- `.dll` (Windows icon resource extraction)
 
 Loaded images are converted to RGBA automatically, and very large images may be downscaled for more responsive editing.
 
@@ -153,6 +165,7 @@ python icon_editor/main.py --cli --input path/to/image.png --output out/icon.ico
 ```
 
 ### Batch Export
+
 ```bash
 python icon_editor/main.py --cli --input-dir ./images --pattern "*.png" --out-dir ./out --sizes 16,32,48,256 --resample lanczos --export-pngs
 ```
