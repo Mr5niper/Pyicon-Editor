@@ -14,21 +14,20 @@ A full-featured, cross-platform icon creator and editor written in Python. Creat
 <br>
 **System Theme:**
 <br>
-<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/e36a2239-f600-416d-b0a9-a2a91e562204" />
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/49a2f8ef-5181-4360-ad24-8e990e26e762" />
 <br>
 <br>
 **Light Theme:**
 <br>
-<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/9191ae6e-bc5c-4870-ad24-2e1970dbc5d3" />
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/7b7299db-bc29-4357-9b72-4b632622f112" />
 <br>
 <br>
 **Dark Theme:**
 <br>
-<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/87fcddc3-cacf-4c65-8356-b0c590d594d6" />
+<img width="1562" height="949" alt="image" src="https://github.com/user-attachments/assets/b90271ca-51e4-4904-b294-f0ccf0f6e0e6" />
 <br>
 ### 1. File Operations
 - **Open**: Load an existing image (`PNG`, `JPG`, `BMP`, `GIF`, `TIFF`, `WebP`, `ICO`). Opening a Windows executable (`.exe`) or library (`.dll`) will spawn a visual selector allowing you to choose which embedded icon to extract.
-<br>
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**EXE/DLL Icon Selector:**
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>
