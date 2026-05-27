@@ -181,7 +181,11 @@ class CanvasEditor(ttk.Frame):
         # Restore the missing scrollbars
         self.hbar = ttk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
         self.vbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(xscrollcommand=self.hbar.set, yscrollcommand=self.vbar.set)
+        # Link scroll updates to immediately refresh our viewport-cropped image
+        self.canvas.configure(
+            xscrollcommand=lambda f, l: (self.hbar.set(f, l), self._refresh_display()),
+            yscrollcommand=lambda f, l: (self.vbar.set(f, l), self._refresh_display())
+        )
         
         self.hbar.grid(row=1, column=0, sticky="ew")
         self.vbar.grid(row=0, column=1, sticky="ns")
@@ -803,17 +807,19 @@ class CanvasEditor(ttk.Frame):
                 
                 # Run the view adjustment 1ms later so Tkinter has time to process the new boundaries smoothly
                 def adjust_view():
-                    sr = self.canvas.bbox("all")
-                    if sr:
-                        sr_w = max(1, sr[2] - sr[0])
-                        sr_h = max(1, sr[3] - sr[1])
-                        cw = self.canvas.winfo_width()
-                        ch = self.canvas.winfo_height()
-                        
-                        if sr_w > cw:
-                            self.canvas.xview_moveto((new_cx - event.x) / sr_w)
-                        if sr_h > ch:
-                            self.canvas.yview_moveto((new_cy - event.y) / sr_h)
+                    # Calculate total virtual bounds mathematically (bypassing bbox which is now cropped)
+                    total_w = self.width() * new_zoom
+                    total_h = self.height() * new_zoom
+                    cw = max(1, self.canvas.winfo_width())
+                    ch = max(1, self.canvas.winfo_height())
+                    
+                    sr_w = max(total_w, cw)
+                    sr_h = max(total_h, ch)
+                    
+                    if total_w > cw:
+                        self.canvas.xview_moveto((new_cx - event.x) / sr_w)
+                    if total_h > ch:
+                        self.canvas.yview_moveto((new_cy - event.y) / sr_h)
                             
                 self.canvas.after(1, adjust_view)
 
@@ -979,7 +985,7 @@ class CanvasEditor(ttk.Frame):
         self.on_status("Background made transparent")
 
     # ---------- Rendering ----------
-    def _compose_display_image(self):
+    def _compose_display_image(self, ix0=0, iy0=0, ix1=None, iy1=None):
         if not self.layers:
             return None
         comp = self._get_composite_with_preview()
@@ -991,67 +997,122 @@ class CanvasEditor(ttk.Frame):
             self._bg_cache = create_checkerboard((comp.width, comp.height), square_size=8).convert("RGBA")
             
         composed = Image.alpha_composite(self._bg_cache, comp)
+
+        # 2. Crop to the active visible viewport
+        if ix1 is None: ix1 = comp.width
+        if iy1 is None: iy1 = comp.height
         
-        # 2. Scale the canvas layer via Nearest Neighbor
-        if self.zoom != 1:
-            composed = composed.resize((comp.width * self.zoom, comp.height * self.zoom), Image.NEAREST)
+        ix0 = max(0, min(ix0, comp.width))
+        iy0 = max(0, min(iy0, comp.height))
+        ix1 = max(0, min(ix1, comp.width))
+        iy1 = max(0, min(iy1, comp.height))
+        
+        if ix0 >= ix1 or iy0 >= iy1:
+            return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
             
-        # 3. Apply the Selection Marquee on top of the scaled output
+        cropped = composed.crop((ix0, iy0, ix1, iy1))
+        
+        # 3. Scale only the small cropped chunk
+        if self.zoom != 1:
+            scaled = cropped.resize((cropped.width * self.zoom, cropped.height * self.zoom), Image.NEAREST)
+        else:
+            scaled = cropped
+            
+        # 4. Apply the Selection Marquee on top of the scaled chunk
+        draw = ImageDraw.Draw(scaled)
         if self.sel_active:
-            draw = ImageDraw.Draw(composed)
-
             if self.sel_floating is not None:
-                x0, y0 = self.sel_offset
-                x1 = x0 + self.sel_floating.width
-                y1 = y0 + self.sel_floating.height
+                sx0, sy0 = self.sel_offset
+                sx1 = sx0 + self.sel_floating.width
+                sy1 = sy0 + self.sel_floating.height
             elif self.sel_rect:
-                x0, y0, x1, y1 = self._norm_rect(self.sel_rect)
+                sx0, sy0, sx1, sy1 = self._norm_rect(self.sel_rect)
             else:
-                x0 = y0 = x1 = y1 = None
+                sx0 = sy0 = sx1 = sy1 = None
 
-            if x0 is not None:
-                draw.rectangle(
-                    [x0 * self.zoom, y0 * self.zoom, (x1 + 1) * self.zoom, (y1 + 1) * self.zoom],
-                    outline=(0, 200, 255, 255),
-                    width=1
-                )
+            if sx0 is not None:
+                # Map global unscaled coordinates to local cropped & scaled coordinates
+                rx0 = (sx0 - ix0) * self.zoom
+                ry0 = (sy0 - iy0) * self.zoom
+                rx1 = (sx1 - ix0 + 1) * self.zoom
+                ry1 = (sy1 - iy0 + 1) * self.zoom
+                draw.rectangle([rx0, ry0, rx1, ry1], outline=(0, 200, 255, 255), width=1)
 
-        # 4. Lay down the guide grid lines safely
+        # 5. Lay down the guide grid lines safely
         if self.show_grid and self.zoom >= 4:
-            draw = ImageDraw.Draw(composed)
-            w, h = composed.size
+            w, h = scaled.size
             for x in range(0, w, self.zoom):
                 draw.line([(x, 0), (x, h)], fill=(0, 0, 0, 40))
             for y in range(0, h, self.zoom):
                 draw.line([(0, y), (w, y)], fill=(0, 0, 0, 40))
                 
-        return composed
+        return scaled
 
     def _refresh_display(self):
-        composed = self._compose_display_image()
-        if composed is None:
+        # Prevent recursive calls caused by config(scrollregion=...)
+        if getattr(self, "_is_refreshing", False):
             return
+        self._is_refreshing = True
+        
+        try:
+            if not self.layers:
+                return
 
-        self._display_image = ImageTk.PhotoImage(composed)
+            comp_w = self.width()
+            comp_h = self.height()
+            total_w = comp_w * self.zoom
+            total_h = comp_h * self.zoom
 
-        # DO NOT call self.canvas.delete("all") here
-        # DO NOT call self.canvas.update_idletasks() here
+            cw = max(1, self.canvas.winfo_width())
+            ch = max(1, self.canvas.winfo_height())
 
-        cw = max(1, self.canvas.winfo_width())
-        ch = max(1, self.canvas.winfo_height())
+            sr_w = max(total_w, cw)
+            sr_h = max(total_h, ch)
 
-        sr_w = max(composed.width, cw)
-        sr_h = max(composed.height, ch)
+            # 1. Update the scroll bounds ONLY if they actually changed to prevent event flooding
+            current_sr = self.canvas.cget("scrollregion")
+            needs_sr_update = True
+            if current_sr:
+                try:
+                    if tuple(map(int, str(current_sr).split())) == (0, 0, sr_w, sr_h):
+                        needs_sr_update = False
+                except Exception:
+                    pass
+            
+            if needs_sr_update:
+                self.canvas.config(scrollregion=(0, 0, sr_w, sr_h))
 
-        self.canvas.config(scrollregion=(0, 0, sr_w, sr_h))
+            # Get the visible viewport in scaled pixels
+            vx0 = max(0, int(self.canvas.canvasx(0)))
+            vy0 = max(0, int(self.canvas.canvasy(0)))
+            vx1 = vx0 + cw
+            vy1 = vy0 + ch
 
-        # Re-use the existing canvas image instead of destroying it
-        if getattr(self, "_canvas_image_id", None) is None:
-            self._canvas_image_id = self.canvas.create_image(0, 0, image=self._display_image, anchor="nw")
-        else:
-            self.canvas.itemconfig(self._canvas_image_id, image=self._display_image)
+            # Convert to unscaled image bounds (expand by 1 to cover edges cleanly)
+            ix0 = vx0 // self.zoom
+            iy0 = vy0 // self.zoom
+            ix1 = (vx1 // self.zoom) + 1
+            iy1 = (vy1 // self.zoom) + 1
 
-        if composed.width <= cw:
-            self.canvas.xview_moveto(0)
-        if composed.height <= ch:
-            self.canvas.yview_moveto(0)
+            composed = self._compose_display_image(ix0, iy0, ix1, iy1)
+            if composed is None:
+                return
+
+            self._display_image = ImageTk.PhotoImage(composed)
+
+            # Map the unscaled start coordinates back to scaled canvas coordinates
+            anchor_x = ix0 * self.zoom
+            anchor_y = iy0 * self.zoom
+
+            if getattr(self, "_canvas_image_id", None) is None:
+                self._canvas_image_id = self.canvas.create_image(anchor_x, anchor_y, image=self._display_image, anchor="nw")
+            else:
+                self.canvas.itemconfig(self._canvas_image_id, image=self._display_image)
+                self.canvas.coords(self._canvas_image_id, anchor_x, anchor_y)
+                
+            # Note: xview_moveto(0) and yview_moveto(0) were completely removed here 
+            # to fix the infinite event queue lockup. Tkinter automatically pins 
+            # undersized canvases to 0,0 based on the scrollregion anyway.
+                
+        finally:
+            self._is_refreshing = False
