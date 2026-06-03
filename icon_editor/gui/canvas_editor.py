@@ -798,30 +798,45 @@ class CanvasEditor(ttk.Frame):
                 cx = self.canvas.canvasx(event.x)
                 cy = self.canvas.canvasy(event.y)
                 old_zoom = self.zoom
-                
-                self.set_zoom(new_zoom)
-                
+
+                # Update the zoom level and notify listeners WITHOUT painting yet.
+                # We paint a single time, after the view has been repositioned, so
+                # the user never sees an intermediate frame. The previous code set
+                # the zoom (one render at the OLD scroll position) and then moved
+                # the view 1ms later via after() (a second render) -- those two
+                # frames were the flicker.
+                self.zoom = new_zoom
+                self.on_status(f"Zoom: {self.zoom}x")
+                self.on_zoom_change(self.zoom)
+
                 scale = new_zoom / old_zoom
                 new_cx = cx * scale
                 new_cy = cy * scale
-                
-                # Run the view adjustment 1ms later so Tkinter has time to process the new boundaries smoothly
-                def adjust_view():
-                    # Calculate total virtual bounds mathematically (bypassing bbox which is now cropped)
-                    total_w = self.width() * new_zoom
-                    total_h = self.height() * new_zoom
-                    cw = max(1, self.canvas.winfo_width())
-                    ch = max(1, self.canvas.winfo_height())
-                    
-                    sr_w = max(total_w, cw)
-                    sr_h = max(total_h, ch)
-                    
+
+                # Compute the new virtual bounds mathematically (bbox is cropped now)
+                total_w = self.width() * new_zoom
+                total_h = self.height() * new_zoom
+                cw = max(1, self.canvas.winfo_width())
+                ch = max(1, self.canvas.winfo_height())
+                sr_w = max(total_w, cw)
+                sr_h = max(total_h, ch)
+
+                # Reposition everything in one synchronous pass. We hold the refresh
+                # lock so the xscrollcommand/yscrollcommand callbacks fired by the
+                # moveto calls don't each trigger their own render; then we paint the
+                # final, settled view exactly once. Because no control returns to the
+                # event loop in between, Tkinter does a single redraw -> no flicker.
+                self._is_refreshing = True
+                try:
+                    self.canvas.config(scrollregion=(0, 0, sr_w, sr_h))
                     if total_w > cw:
                         self.canvas.xview_moveto((new_cx - event.x) / sr_w)
                     if total_h > ch:
                         self.canvas.yview_moveto((new_cy - event.y) / sr_h)
-                            
-                self.canvas.after(1, adjust_view)
+                finally:
+                    self._is_refreshing = False
+
+                self._refresh_display()
 
     # ---------- Drawing helpers ----------
     def _draw_point(self, x, y, color):
@@ -1088,11 +1103,17 @@ class CanvasEditor(ttk.Frame):
             vx1 = vx0 + cw
             vy1 = vy0 + ch
 
-            # Convert to unscaled image bounds (expand by 1 to cover edges cleanly)
-            ix0 = vx0 // self.zoom
-            iy0 = vy0 // self.zoom
-            ix1 = (vx1 // self.zoom) + 1
-            iy1 = (vy1 // self.zoom) + 1
+            # Convert to unscaled image bounds. We render a margin BEYOND the
+            # visible viewport ("overscan") so that a small scroll delta -- whether
+            # from panning or from the view shift during a zoom step -- never leaves
+            # un-painted canvas at the edges before the next refresh catches up.
+            # The margin is a fixed number of screen pixels, so at high zoom it is
+            # only a pixel or two of source image: the crop stays cheap.
+            margin = (48 // self.zoom) + 2  # ~48 screen px of cushion, in image px
+            ix0 = max(0, vx0 // self.zoom - margin)
+            iy0 = max(0, vy0 // self.zoom - margin)
+            ix1 = (vx1 // self.zoom) + margin + 1
+            iy1 = (vy1 // self.zoom) + margin + 1
 
             composed = self._compose_display_image(ix0, iy0, ix1, iy1)
             if composed is None:
