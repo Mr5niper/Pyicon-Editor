@@ -1,0 +1,44 @@
+# ---- Build output (PyInstaller) ----
+build/
+dist/
+*.exe
+
+# PyInstaller spec is hand-edited in this project (icon_editor.spec is
+# tracked); ignore *.spec.bak that some editors leave behind.
+*.spec.bak
+
+# Auto-generated PyInstaller workfiles
+*.manifest
+
+# Build virtual environments
+.venv/
+venv/
+env/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# ---- Pillow / image processing temp files ----
+*.tmp.png
+*.tmp.ico
+*~.png
+*~.ico
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+*.swp
+*.bak
+.DS_Store
+Thumbs.db
+
+# ---- Notes ----
+# dist/Mr5niper.txt is a signature/banner file. If you want to keep it
+# in git despite ignoring dist/, force-add it with:
+#     git add -f dist/Mr5niper.txt
