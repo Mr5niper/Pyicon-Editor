@@ -218,7 +218,7 @@ class IconFactory:
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Mr5niper's Pyicon Editor and Creator v1.4.1.0")
+        self.title("Mr5niper's Pyicon Editor and Creator v1.4.2.0")
         self.geometry("1560x910+20+20")
         self.minsize(1350, 720)
 
